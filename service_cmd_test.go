@@ -41,7 +41,7 @@ func (f *fakeManager) Status(context.Context) *service.Status {
 
 func (f *fakeManager) Addr() string { return "127.0.0.1:8080" }
 
-func (f *fakeManager) EnvFile() string { return "/home/nefla/.config/ngodingmcp/env" }
+func (f *fakeManager) EnvFile() string { return "/home/user/.config/ngodingmcp/env" }
 
 func useFakeManager(t *testing.T, f *fakeManager) {
 	t.Helper()
@@ -59,7 +59,7 @@ func runSvc(cmd string, args ...string) (int, string, string) {
 func TestDaemonFlagPrintsWebUIAndLingerHint(t *testing.T) {
 	f := &fakeManager{
 		res:    &service.InstallResult{Unit: service.UnitCreated, EnvCreated: true, Addr: "127.0.0.1:8080"},
-		status: service.Status{Installed: true, State: "active", Workspace: "/home/nefla/ngodingmcp", LingerKnown: true},
+		status: service.Status{Installed: true, State: "active", Workspace: "/home/user/ngodingmcp", LingerKnown: true},
 	}
 	useFakeManager(t, f)
 	code, out, errOut := runSvc("-d")
@@ -72,8 +72,8 @@ func TestDaemonFlagPrintsWebUIAndLingerHint(t *testing.T) {
 		"started and enabled",
 		"web UI:    http://127.0.0.1:8080/",
 		"MCP:       http://127.0.0.1:8080/mcp",
-		"workspace: /home/nefla/ngodingmcp",
-		"NGODINGMCP_TOKEN in /home/nefla/.config/ngodingmcp/env",
+		"workspace: /home/user/ngodingmcp",
+		"NGODINGMCP_TOKEN in /home/user/.config/ngodingmcp/env",
 		"loginctl enable-linger",
 	} {
 		if !strings.Contains(out, want) {
@@ -107,7 +107,7 @@ func TestStatusCommand(t *testing.T) {
 	}
 
 	f.status = service.Status{Installed: true, State: "active", Enabled: "enabled", Addr: "127.0.0.1:8080",
-		Listening: true, UnitExe: "/home/nefla/bin/ngodingmcp", LingerKnown: true, Linger: true,
+		Listening: true, UnitExe: "/home/user/bin/ngodingmcp", LingerKnown: true, Linger: true,
 		Warnings: []string{"something to fix"}}
 	code, out, _ := runSvc("status")
 	if code != 0 {

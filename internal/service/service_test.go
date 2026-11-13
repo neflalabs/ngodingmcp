@@ -339,7 +339,7 @@ func TestStatus(t *testing.T) {
 		t.Errorf("before install: %+v", st)
 	}
 
-	if err := config.Save(config.Config{Root: "/home/nefla/sekolah", Token: "tui"}); err != nil {
+	if err := config.Save(config.Config{Root: "/home/user/sekolah", Token: "tui"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := h.m.Install(ctx); err != nil {
@@ -349,7 +349,7 @@ func TestStatus(t *testing.T) {
 	if !st.Installed || !st.Running() || !st.Listening || st.Enabled != "enabled" {
 		t.Errorf("after install: %+v", st)
 	}
-	if st.Workspace != "/home/nefla/sekolah" || st.UnitExe != h.m.Exe || len(st.Warnings) != 0 {
+	if st.Workspace != "/home/user/sekolah" || st.UnitExe != h.m.Exe || len(st.Warnings) != 0 {
 		t.Errorf("after install: %+v", st)
 	}
 
