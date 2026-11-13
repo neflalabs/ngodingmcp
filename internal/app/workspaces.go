@@ -124,6 +124,31 @@ func findWorkspace(list []config.SavedWorkspace, name string) int {
 	return -1
 }
 
+// restoreSaved applies the per-workspace settings of the saved entry whose
+// folder is the current root. The root itself is remembered in the config on
+// every switch, so a restarted server (for example the systemd service) comes
+// back in the same workspace; this brings its overrides back as well. It is
+// called once from New, before anything uses the workspace, and reports the
+// entry's name and whether the settings changed.
+func (m *workspaceManager) restoreSaved(saved []config.SavedWorkspace) (string, bool) {
+	cur := m.ws.Current()
+	for _, s := range saved {
+		if s.Path != cur.Root {
+			continue
+		}
+		want := m.settingsFor(s)
+		if want == cur {
+			return s.Name, false
+		}
+		if err := m.ws.Switch(context.Background(), want, nil); err != nil {
+			m.logger.Warn("restore saved workspace settings", "name", s.Name, "err", err)
+			return s.Name, false
+		}
+		return s.Name, true
+	}
+	return "", false
+}
+
 // settingsFor merges an entry with the global defaults.
 func (m *workspaceManager) settingsFor(s config.SavedWorkspace) workspace.Settings {
 	out := workspace.Settings{

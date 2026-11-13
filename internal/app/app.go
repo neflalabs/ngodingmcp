@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -13,11 +14,13 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"ngodingmcp/internal/auth"
+	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/fetch"
 	"ngodingmcp/internal/mcpserver"
 	"ngodingmcp/internal/procman"
@@ -140,13 +143,19 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 	ui.SetProcesses(procMgr)
-	ui.SetWorkspaces(&workspaceManager{
+	wsManager := &workspaceManager{
 		ws:       ws,
 		runner:   cmdRunner,
 		procs:    procMgr,
 		defaults: webui.WorkspaceDefaults{AllowSensitive: cfg.AllowSensitive, MaxFileBytes: ws.MaxRead()},
 		logger:   logger,
-	})
+	}
+	// The start root is usually the workspace last opened in the Web UI
+	// (config.Config.Root); bring back its per-workspace settings too.
+	if name, changed := wsManager.restoreSaved(config.Load().Workspaces); changed {
+		logger.Info("restored saved workspace settings", "name", name)
+	}
+	ui.SetWorkspaces(wsManager)
 
 	var downloader *fetch.Client
 	if cfg.AllowDownload {
@@ -239,6 +248,12 @@ func (s *Server) BaseURL() string {
 	if s.listener != nil {
 		addr = s.listener.Addr().String()
 	}
+	return BaseURLFor(addr)
+}
+
+// BaseURLFor is the HTTP origin for a listen address; a wildcard host
+// ("0.0.0.0", "::" or empty) becomes 127.0.0.1.
+func BaseURLFor(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "http://" + addr
@@ -248,6 +263,20 @@ func (s *Server) BaseURL() string {
 		host = "127.0.0.1"
 	}
 	return "http://" + net.JoinHostPort(host, port)
+}
+
+// IsAddrInUse reports whether err comes from binding a listen address that
+// another process (often the background service) already uses.
+func IsAddrInUse(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EADDRINUSE) {
+		return true
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "address already in use") ||
+		strings.Contains(msg, "only one usage of each socket address")
 }
 
 // MCPURL is the Streamable HTTP endpoint for MCP clients.
@@ -305,6 +334,10 @@ func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 		)
 	})
 }
+
+// NewToken returns a fresh random auth token, the same kind New generates
+// when Config.Token is empty.
+func NewToken() (string, error) { return randomToken() }
 
 func randomToken() (string, error) {
 	buf := make([]byte, 24)

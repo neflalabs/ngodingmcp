@@ -80,6 +80,11 @@ type Model struct {
 	statusMsg string
 	errMsg    string
 
+	// serviceRunning reports whether the systemd user service is active; it
+	// only shapes the message shown when the listen port is taken. Nil means
+	// unknown (tests, non-systemd systems).
+	serviceRunning func() bool
+
 	width  int
 	height int
 }
@@ -122,6 +127,10 @@ func NewWithPreset(version, root, addr, token string) *Model {
 
 	return m
 }
+
+// SetServiceProbe sets the check used to tell the user that the background
+// service (`ngodingmcp -d`) already holds the listen port.
+func (m *Model) SetServiceProbe(running func() bool) { m.serviceRunning = running }
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd { return tickCmd() }
@@ -373,7 +382,7 @@ func (m *Model) start() {
 		return
 	}
 	if err := srv.Start(); err != nil {
-		m.errMsg = "cannot start: " + err.Error()
+		m.errMsg = m.startError(strings.TrimSpace(m.inputs[fieldAddr].Value()), err)
 		return
 	}
 

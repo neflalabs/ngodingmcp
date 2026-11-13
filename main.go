@@ -21,6 +21,7 @@ import (
 	"ngodingmcp/internal/app"
 	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/config"
+	"ngodingmcp/internal/service"
 	"ngodingmcp/internal/tui"
 )
 
@@ -28,10 +29,19 @@ const usageText = `NgodingMCP — sandboxed text-editor MCP server
 
 Usage:
   ngodingmcp                    Start the server, or open the control panel in a terminal
-  ngodingmcp serve [flags]      Start the HTTP server
+  ngodingmcp serve [flags]      Start the HTTP server in the foreground, without the TUI
+                                (what the background service runs)
   ngodingmcp tui [flags]        Open the terminal control panel
   ngodingmcp version            Print the version, commit and build time
   ngodingmcp help               Show this help
+
+Background service (systemd user service, no root needed):
+  ngodingmcp -d                 Install or refresh the service, start it and print the web UI
+  ngodingmcp status             Is it running, and where
+  ngodingmcp logs [-n 50] [--no-follow]
+                                Show the service log (follows new lines by default)
+  ngodingmcp restart            Restart it, e.g. after a rebuild or an env file edit
+  ngodingmcp stop               Stop it (it stays enabled for the next login)
 
 Server flags:
   -addr string             HTTP listen address (default "127.0.0.1:8080")
@@ -93,6 +103,8 @@ func main() {
 		runServerOrDie(args[1:])
 	case "tui":
 		runTUIOrDie(args[1:])
+	case "-d", "--daemon", "stop", "restart", "status", "logs":
+		os.Exit(runServiceCommand(args[0], args[1:], os.Stdout, os.Stderr))
 	case "version", "-version", "--version", "-v":
 		fmt.Print(buildinfo.Get().Details())
 	case "help", "-h", "--help":
@@ -132,7 +144,16 @@ func stdinIsTerminal() bool {
 }
 
 func runTUI(root, addr, token string) error {
-	p := tea.NewProgram(tui.NewWithPreset(buildinfo.Version(), root, addr, token), tea.WithAltScreen())
+	model := tui.NewWithPreset(buildinfo.Version(), root, addr, token)
+	if mgr, err := service.New(); err == nil {
+		// Only consulted when the port is taken, to say the service holds it.
+		model.SetServiceProbe(func() bool {
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			return mgr.Running(ctx)
+		})
+	}
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }
@@ -247,6 +268,10 @@ func runServer(opts *serverOptions) error {
 		return err
 	}
 	if err := srv.Start(); err != nil {
+		if app.IsAddrInUse(err) {
+			return fmt.Errorf("port %s is already in use; if the background service runs, "+
+				"use it (ngodingmcp status) or stop it first (ngodingmcp stop): %w", opts.addr, err)
+		}
 		return err
 	}
 

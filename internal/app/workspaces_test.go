@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -210,6 +211,65 @@ func TestWorkspaceSelectorValidation(t *testing.T) {
 	}
 	if h.ws.Root() != before {
 		t.Error("root changed on a failed switch")
+	}
+}
+
+// A restarted server (for example the systemd service after a reboot) opens
+// the workspace last chosen in the Web UI, with that workspace's own settings.
+func TestRestartRestoresActiveWorkspace(t *testing.T) {
+	h := newWSHarness(t)
+	body := map[string]any{"name": "sekolah", "path": h.b, "maxFileBytes": 4096, "allowSensitive": true}
+	if code, out := h.do("POST", "/workspaces", body); code != 201 {
+		t.Fatalf("save: %d %v", code, out)
+	}
+	if code, out := h.do("POST", "/workspaces/sekolah/activate", nil); code != 200 {
+		t.Fatalf("activate: %d %v", code, out)
+	}
+
+	// What `ngodingmcp serve` does on start: the root comes from the config.
+	srv, err := New(Config{
+		Addr:         "127.0.0.1:0",
+		Root:         config.Load().Root,
+		Token:        wsTestToken,
+		MaxFileBytes: 1 << 20,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if srv.Root() != h.b {
+		t.Errorf("root after restart = %q, want %q", srv.Root(), h.b)
+	}
+	if srv.ws.MaxRead() != 4096 || !srv.ws.AllowSensitive() {
+		t.Errorf("settings after restart: maxRead=%d allowSensitive=%v, want 4096 true", srv.ws.MaxRead(), srv.ws.AllowSensitive())
+	}
+
+	// A root that is not a saved workspace keeps the start settings.
+	other, err := New(Config{Addr: "127.0.0.1:0", Root: h.a, Token: wsTestToken, MaxFileBytes: 1 << 20,
+		Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ws.MaxRead() != 1<<20 || other.ws.AllowSensitive() {
+		t.Errorf("unsaved root got overrides: maxRead=%d allowSensitive=%v", other.ws.MaxRead(), other.ws.AllowSensitive())
+	}
+}
+
+func TestIsAddrInUse(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	_, err = net.Listen("tcp", ln.Addr().String())
+	if !IsAddrInUse(err) {
+		t.Errorf("IsAddrInUse(%v) = false", err)
+	}
+	if IsAddrInUse(nil) || IsAddrInUse(os.ErrNotExist) {
+		t.Error("IsAddrInUse true for an unrelated error")
+	}
+	if got := BaseURLFor("0.0.0.0:9000"); got != "http://127.0.0.1:9000" {
+		t.Errorf("BaseURLFor wildcard = %q", got)
 	}
 }
 
