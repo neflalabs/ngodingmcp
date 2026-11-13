@@ -1,13 +1,16 @@
 // Package gitwrite runs a fixed set of non-destructive git write commands
 // inside the workspace root: init, add, unstage, commit, create branch and
-// switch branch. Callers never pass raw git arguments: every option is built
-// here, paths are validated by the workspace first, and sensitive files (see
-// workspace.IsSensitive) are never staged or committed while the guard is on.
+// switch branch, plus the remote operations in remote.go (remotes, fetch,
+// fast-forward pull, non-force push and merge). Callers never pass raw git
+// arguments: every option is built here, paths are validated by the
+// workspace first, and sensitive files (see workspace.IsSensitive) are never
+// staged or committed while the guard is on.
 //
-// Nothing here can lose work: there is no push, pull, fetch, merge, rebase,
-// reset --hard, checkout of files, clean, stash drop, branch delete, amend or
-// force option. Repository hooks and commit signing never run, so a commit
-// cannot execute a script the agent wrote into the workspace.
+// Nothing here can lose work: there is no rebase, reset --hard, checkout of
+// files, clean, stash drop, branch delete, amend or force option, push never
+// forces and pull only fast-forwards. Repository hooks and commit signing
+// never run, so a commit cannot execute a script the agent wrote into the
+// workspace.
 package gitwrite
 
 import (
@@ -52,13 +55,17 @@ var (
 
 // Git runs git write commands for one workspace.
 type Git struct {
-	ws      *workspace.Workspace
-	timeout time.Duration
+	ws            *workspace.Workspace
+	timeout       time.Duration
+	remoteTimeout time.Duration
+	// allowLocal lets tests use a bare repository on disk as a remote. It
+	// is never set outside tests: local paths and file:// stay refused.
+	allowLocal bool
 }
 
 // New returns a Git bound to ws.
 func New(ws *workspace.Workspace) *Git {
-	return &Git{ws: ws, timeout: DefaultTimeout}
+	return &Git{ws: ws, timeout: DefaultTimeout, remoteTimeout: RemoteTimeout}
 }
 
 // Init creates a repository at the workspace root with the given initial
@@ -342,17 +349,44 @@ func (g *Git) requireRoot(ctx context.Context) error {
 	return nil
 }
 
-// git runs one git command in the workspace root with hooks, signing,
+// git runs one local git command in the workspace root with hooks, signing,
 // fsmonitor, pagers and prompts turned off, and returns stdout.
 func (g *Git) git(ctx context.Context, stdin string, args ...string) (string, error) {
+	out, _, err := g.run(ctx, runOpts{stdin: stdin}, args...)
+	return out, err
+}
+
+// runOpts selects how one git command runs.
+type runOpts struct {
+	stdin string
+	// network marks a command that talks to a remote: it gets the longer
+	// remote timeout, runs detached from any terminal, never prompts and
+	// only uses credential helpers and ssh settings from the user's global
+	// or system git config (see networkSetup).
+	network bool
+}
+
+// run runs one git command and returns stdout and stderr. Error messages
+// always have credentials scrubbed from URLs and host paths rewritten to
+// workspace-relative ones; for network commands stdout and stderr do too.
+func (g *Git) run(ctx context.Context, o runOpts, args ...string) (string, string, error) {
 	bin, err := exec.LookPath("git")
 	if err != nil {
-		return "", ErrNoGit
+		return "", "", ErrNoGit
 	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	ctx, cancel := context.WithTimeout(ctx, g.timeout)
+	timeout := g.timeout
+	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GIT_EDITOR=true", "LC_ALL=C")
+	var netConfig []string
+	if o.network {
+		timeout = g.remoteTimeout
+		cfg, netEnv := g.networkSetup(ctx)
+		netConfig = cfg
+		env = append(env, netEnv...)
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	full := []string{
@@ -365,12 +399,16 @@ func (g *Git) git(ctx context.Context, stdin string, args ...string) (string, er
 		"-c", "tag.gpgSign=false",
 		"-c", "advice.detachedHead=false",
 	}
+	full = append(full, netConfig...)
 	full = append(full, args...)
 	cmd := exec.CommandContext(ctx, bin, full...)
 	cmd.Dir = g.ws.Root()
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GIT_EDITOR=true", "LC_ALL=C")
-	if stdin != "" {
-		cmd.Stdin = strings.NewReader(stdin)
+	cmd.Env = env
+	if o.stdin != "" {
+		cmd.Stdin = strings.NewReader(o.stdin)
+	}
+	if o.network {
+		detach(cmd)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -378,16 +416,34 @@ func (g *Git) git(ctx context.Context, stdin string, args ...string) (string, er
 	if err := cmd.Run(); err != nil {
 		name := firstCommand(args)
 		if ctx.Err() == context.DeadlineExceeded {
-			return "", fmt.Errorf("git %s timed out after %s: %w", name, g.timeout, context.DeadlineExceeded)
+			return "", "", fmt.Errorf("git %s timed out after %s: %w", name, timeout, context.DeadlineExceeded)
 		}
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
 			msg = err.Error()
 		}
-		return "", g.ws.SafeError(fmt.Errorf("git %s: %s", name, msg))
+		// stdout is kept on failure because git push --porcelain reports
+		// rejected refs there.
+		out := g.ws.ScrubPaths(ScrubCredentials(stdout.String()))
+		return out, "", g.ws.SafeError(&scrubbedError{msg: ScrubCredentials(fmt.Sprintf("git %s: %s", name, msg)), err: err})
 	}
-	return stdout.String(), nil
+	if !o.network {
+		return stdout.String(), stderr.String(), nil
+	}
+	out := g.ws.ScrubPaths(ScrubCredentials(stdout.String()))
+	errOut := g.ws.ScrubPaths(ScrubCredentials(stderr.String()))
+	return out, errOut, nil
 }
+
+// scrubbedError carries a credential-free message and keeps the original
+// error (for example *exec.ExitError) for errors.As.
+type scrubbedError struct {
+	msg string
+	err error
+}
+
+func (e *scrubbedError) Error() string { return e.msg }
+func (e *scrubbedError) Unwrap() error { return e.err }
 
 // firstCommand returns the git subcommand in args, skipping -c pairs.
 func firstCommand(args []string) string {

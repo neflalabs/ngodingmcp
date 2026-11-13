@@ -2,12 +2,13 @@ package mcpserver
 
 // Git tools, always registered. Read-only: git_status, git_diff, git_log
 // (internal/gitread). Write: git_init, git_add, git_unstage, git_commit,
-// git_create_branch, git_switch_branch (internal/gitwrite).
+// git_create_branch, git_switch_branch (internal/gitwrite). Remote tools
+// (remotes, fetch, pull, push, merge, GitHub repo creation) live in
+// tools_git_remote.go.
 //
-// The write tools cover only the local, non-destructive part of a git
-// workflow. Nothing here talks to a remote or can discard work: there is no
-// push, pull, fetch, reset --hard, clean, checkout of files, branch delete,
-// amend or force option.
+// The write tools in this file cover the local, non-destructive part of a
+// git workflow. Nothing can discard work: there is no reset --hard, clean,
+// checkout of files, branch delete, amend or force option.
 
 import (
 	"context"
@@ -25,7 +26,9 @@ import (
 // addGitTools registers the read-only and the write git tools.
 func addGitTools(s *mcp.Server, ws *workspace.Workspace) {
 	addGitReadTools(s, gitread.New(ws))
-	addGitWriteTools(s, gitwrite.New(ws))
+	gw := gitwrite.New(ws)
+	addGitWriteTools(s, gw)
+	addGitRemoteTools(s, gw)
 }
 
 // ===========================================================================

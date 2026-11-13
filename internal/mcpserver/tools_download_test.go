@@ -56,9 +56,11 @@ func TestDownloadFileToolOptIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 20 base tools + 6 core git write tools (git_init, git_add, git_unstage,
-	// git_commit, git_create_branch, git_switch_branch).
-	if base != 26 {
-		t.Fatalf("default tool count = %d, want 26 (download_file must be opt-in)", base)
+	// git_commit, git_create_branch, git_switch_branch) + 6 git remote tools
+	// (git_remote, git_fetch, git_pull, git_push, git_merge,
+	// git_github_create_repo).
+	if base != 32 {
+		t.Fatalf("default tool count = %d, want 32 (download_file must be opt-in)", base)
 	}
 	withDL, err := mcpserver.CountTools(ctx, mcpserver.NewWithOptions(ws, "test", mcpserver.Options{Downloader: fetch.New(fetch.Options{})}))
 	if err != nil {

@@ -64,12 +64,13 @@ func TestGitWriteToolsAreCore(t *testing.T) {
 	for _, tool := range res.Tools {
 		have[tool.Name] = true
 	}
-	for _, name := range []string{"git_init", "git_add", "git_unstage", "git_commit", "git_create_branch", "git_switch_branch"} {
+	for _, name := range []string{"git_init", "git_add", "git_unstage", "git_commit", "git_create_branch", "git_switch_branch",
+		"git_remote", "git_fetch", "git_pull", "git_push", "git_merge", "git_github_create_repo"} {
 		if !have[name] {
 			t.Errorf("%s not registered by default", name)
 		}
 	}
-	for _, name := range []string{"git_push", "git_pull", "git_reset", "git_clean", "git_checkout"} {
+	for _, name := range []string{"git_reset", "git_clean", "git_checkout", "git_rebase", "git_delete_branch"} {
 		if have[name] {
 			t.Errorf("%s must not exist", name)
 		}
@@ -135,5 +136,45 @@ func TestGitWriteToolsEndToEnd(t *testing.T) {
 	res = callTool(t, session, "git_add", map[string]any{"paths": []string{"../outside"}})
 	if !res.IsError || strings.Contains(getTextContent(res), root) {
 		t.Fatalf("git_add outside workspace: %s", getTextContent(res))
+	}
+}
+
+func TestGitRemoteToolsEndToEnd(t *testing.T) {
+	session, root := newGitWriteSession(t)
+	if res := callTool(t, session, "git_init", map[string]any{}); res.IsError {
+		t.Fatalf("git_init: %s", getTextContent(res))
+	}
+
+	res := callTool(t, session, "git_remote", map[string]any{})
+	if res.IsError || !strings.Contains(getTextContent(res), "no remotes") {
+		t.Fatalf("git_remote list: %s", getTextContent(res))
+	}
+	for _, u := range []string{"file:///tmp/x.git", "/tmp/x.git", "ext::sh -c id", "https://user:hunter2@github.com/a/b.git"} {
+		res = callTool(t, session, "git_remote", map[string]any{"action": "add", "name": "origin", "url": u})
+		if !res.IsError || strings.Contains(getTextContent(res), "hunter2") {
+			t.Fatalf("git_remote add %q: %s", u, getTextContent(res))
+		}
+	}
+	res = callTool(t, session, "git_remote", map[string]any{"action": "add", "name": "origin", "url": "git@github.com:neflalabs/ngodingmcp.git"})
+	if res.IsError {
+		t.Fatalf("git_remote add: %s", getTextContent(res))
+	}
+	res = callTool(t, session, "git_remote", map[string]any{"action": "list"})
+	if res.IsError || !strings.Contains(getTextContent(res), "origin\tgit@github.com:neflalabs/ngodingmcp.git") {
+		t.Fatalf("git_remote list: %s", getTextContent(res))
+	}
+
+	// No commits yet, and a remote that is never contacted.
+	res = callTool(t, session, "git_push", map[string]any{})
+	if !res.IsError || strings.Contains(getTextContent(res), root) {
+		t.Fatalf("git_push without commits: %s", getTextContent(res))
+	}
+	res = callTool(t, session, "git_merge", map[string]any{"ref": "--abort"})
+	if !res.IsError {
+		t.Fatal("option-like merge ref accepted")
+	}
+	res = callTool(t, session, "git_remote", map[string]any{"action": "remove", "name": "origin"})
+	if res.IsError {
+		t.Fatalf("git_remote remove: %s", getTextContent(res))
 	}
 }

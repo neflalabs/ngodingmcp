@@ -116,8 +116,9 @@ func hasCommand(raw []byte) bool {
 
 // activityTarget extracts the main target from the call arguments. Only
 // keys that name a target are read; content-bearing keys (content, old, new,
-// edits, new_content, replacement, env, token) are never touched. For
+// edits, new_content, replacement, env, token, url) are never touched. For
 // source_url only the host is kept: signed URLs carry a token in the query.
+// A git remote url is never logged; git_remote shows only the remote name.
 func activityTarget(raw json.RawMessage) string {
 	if len(raw) == 0 {
 		return ""
@@ -150,6 +151,10 @@ func activityTarget(raw json.RawMessage) string {
 		target = str("path")
 	case str("name") != "":
 		target = str("name")
+	case str("ref") != "":
+		target = str("ref")
+	case str("remote") != "":
+		target = str("remote")
 	case args["paths"] != nil:
 		if ps, ok := args["paths"].([]any); ok && len(ps) > 0 {
 			first, _ := ps[0].(string)

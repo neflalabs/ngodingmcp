@@ -6,8 +6,8 @@
 //	v2026.11.12+4deb6fa.dirty   built with uncommitted changes
 //	v2026.11.12+dev             no git information (go run, go test, source copy)
 //
-// The CalVer part (variable version below) is bumped by hand, using the same
-// number as the TaskDev docs. The commit part comes from the VCS stamp that
+// The CalVer part (variable version below) is bumped by hand when a release
+// is cut. The commit part comes from the VCS stamp that
 // `go build` embeds automatically inside a git checkout, so a plain
 // `go build -o ngodingmcp .` is enough. Any part can be overridden at link time:
 //
@@ -32,7 +32,7 @@ import (
 // Link-time overrides (-ldflags "-X ngodingmcp/internal/buildinfo.<name>=<value>").
 var (
 	// version is the CalVer release line.
-	version = "v2026.11.12"
+	version = "v2026.11.13"
 	// commit overrides the VCS revision, for builds outside a git checkout.
 	commit = ""
 	// modified overrides the VCS dirty flag ("true"/"false"); used together with commit.

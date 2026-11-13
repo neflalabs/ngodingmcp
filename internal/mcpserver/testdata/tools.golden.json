@@ -567,6 +567,127 @@
   {
     "annotations": {
       "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Download new commits and branches from a remote into remote-tracking branches (origin/main etc.). Local branches and workspace files are not changed. Never prompts for a password; see the hint in an auth error.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "prune": {
+          "description": "delete remote-tracking branches whose branch is gone on the remote",
+          "type": "boolean"
+        },
+        "remote": {
+          "description": "remote to fetch (default: the current branch's upstream remote, else origin)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_fetch",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "remote": {
+          "type": "string"
+        },
+        "up_to_date": {
+          "type": "boolean"
+        },
+        "updates": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "remote",
+        "up_to_date"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin (or the given remote). Nothing is pushed: call git_push with set_upstream=true next. Needs gh installed and logged in (`gh auth login`); never prompts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "description": "optional one-line description",
+          "type": "string"
+        },
+        "name": {
+          "description": "new repository name, e.g. ngodingmcp",
+          "type": "string"
+        },
+        "owner": {
+          "description": "optional organisation; default is the account gh is logged in as",
+          "type": "string"
+        },
+        "remote": {
+          "description": "remote name to add for the new repository (default origin)",
+          "type": "string"
+        },
+        "skip_remote": {
+          "description": "only create the repository on GitHub; do not add a remote",
+          "type": "boolean"
+        },
+        "visibility": {
+          "description": "private (default), public or internal",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "git_github_create_repo",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "remote_added": {
+          "type": "boolean"
+        },
+        "remote_url": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "visibility": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "visibility",
+        "remote_added"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
       "idempotentHint": false,
       "readOnlyHint": false
     },
@@ -633,6 +754,266 @@
         "repository",
         "output",
         "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). On a conflict the merge is aborted automatically, the branch is left unchanged and the conflicting files are listed. Never runs hooks.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ff_only": {
+          "description": "only fast-forward; refuse to create a merge commit",
+          "type": "boolean"
+        },
+        "message": {
+          "description": "optional merge commit message",
+          "type": "string"
+        },
+        "ref": {
+          "description": "branch, remote branch (origin/main, after git_fetch) or commit to merge into the current branch",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "git_merge",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "fast_forward": {
+          "type": "boolean"
+        },
+        "from": {
+          "type": "string"
+        },
+        "ref": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "up_to_date": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "branch",
+        "ref",
+        "up_to_date"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed and the error says to use git_merge with the remote branch. No rebase. Refuses when uncommitted changes would be overwritten.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "remote branch (default: upstream branch, else the current branch name)",
+          "type": "string"
+        },
+        "remote": {
+          "description": "remote to pull from (default: upstream remote, else origin)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_pull",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ahead": {
+          "type": "integer"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "commits": {
+          "type": "integer"
+        },
+        "fetched": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "from": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "remote_branch": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "up_to_date": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "branch",
+        "remote",
+        "remote_branch",
+        "up_to_date"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; a rejected non-fast-forward push is reported (pull or merge first). Use set_upstream=true on a branch's first push. Never prompts for a password.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "local branch to push (default: the current branch)",
+          "type": "string"
+        },
+        "remote": {
+          "description": "remote to push to (default: the branch's upstream remote, else origin)",
+          "type": "string"
+        },
+        "remote_branch": {
+          "description": "branch name on the remote (default: the upstream branch, else the same name)",
+          "type": "string"
+        },
+        "set_upstream": {
+          "description": "remember remote/remote_branch as the branch's upstream (use on the first push of a branch)",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_push",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "remote": {
+          "type": "string"
+        },
+        "remote_branch": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "upstream_set": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "remote",
+        "branch",
+        "remote_branch",
+        "status"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "List, add, change (set_url) or remove git remotes. Only https and ssh URLs are accepted; local paths, file://, git://, http:// and ext:: are refused, and https URLs may not contain a username or token (credentials come from the user's git credential helper or ssh key). remove deletes only the remote and its remote-tracking branches, never local branches or commits.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "description": "list (default), add, set_url or remove",
+          "type": "string"
+        },
+        "name": {
+          "description": "remote name for add, set_url and remove, e.g. origin",
+          "type": "string"
+        },
+        "url": {
+          "description": "remote URL for add and set_url: https://host/owner/repo.git (no token in it) or ssh (git@host:owner/repo.git, ssh://git@host/owner/repo.git)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_remote",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "remotes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "fetch_url": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "push_url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "fetch_url"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "message"
       ],
       "type": "object"
     }

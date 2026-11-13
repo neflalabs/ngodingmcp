@@ -49,6 +49,10 @@ func TestActivityTargetSkipsContent(t *testing.T) {
 		{map[string]any{"path": "multi\nline\tpath"}, "multi line path"},
 		{map[string]any{"source_url": "https://cdn.example.com/a/b.webp?sig=" + secret, "path": "img/b.webp"}, "cdn.example.com → img/b.webp"},
 		{map[string]any{"source_url": "::not a url" + secret, "path": "x"}, "? → x"},
+		{map[string]any{"action": "add", "name": "origin", "url": "https://u:" + secret + "@github.com/a/b.git"}, "origin"},
+		{map[string]any{"action": "list", "url": "https://" + secret + "@github.com/a/b.git"}, ""},
+		{map[string]any{"ref": "origin/main", "message": secret}, "origin/main"},
+		{map[string]any{"remote": "origin", "set_upstream": true}, "origin"},
 	}
 	for _, c := range cases {
 		raw, _ := json.Marshal(c.args)
