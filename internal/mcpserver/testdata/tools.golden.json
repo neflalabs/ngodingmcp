@@ -1,0 +1,2213 @@
+[
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "paths": {
+          "description": "list of file or directory paths relative to the workspace root",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "paths"
+      ],
+      "type": "object"
+    },
+    "name": "count_tokens",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "estimatedTokens": {
+                "type": "integer"
+              },
+              "lines": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "bytes",
+              "lines",
+              "estimatedTokens"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "totalBytes": {
+          "type": "integer"
+        },
+        "totalEstimatedTokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "items",
+        "totalBytes",
+        "totalEstimatedTokens"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Delete an inclusive range of 1-based lines from a file.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "first line to delete (1-based, inclusive)",
+          "type": "integer"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        },
+        "to": {
+          "description": "last line to delete (1-based, inclusive)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "name": "delete_lines",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "totalLines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "totalLines"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Delete a file or directory inside the workspace. Use recursive=true to remove non-empty directories. Refuses to delete workspace root.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "file or directory path to delete, relative to workspace root",
+          "type": "string"
+        },
+        "recursive": {
+          "description": "if true and target is a directory, deletes entire directory tree",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "delete_path",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Download a file (text or binary, e.g. images) from an https URL and save it in the workspace. Use this for binary files that write_file cannot create. Limits: https only, any public host, max 20 MiB. Loopback and private network addresses are refused. The write is atomic: on any error (size limit, sha256 mismatch, existing file without overwrite) nothing is written. Returns the relative path, bytes written, sha256 and the reported content type.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "overwrite": {
+          "description": "replace the destination if it already exists (default false)",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "destination file path, relative to the workspace root; parent directories are created",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "optional expected SHA-256 (64 hex characters); on mismatch nothing is written",
+          "type": "string"
+        },
+        "source_url": {
+          "description": "https URL of the file to download. A signed, short-lived artifact URL (for example one supplied by the MCP client) works here. Only public https hosts are reached.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_url",
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "download_file",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "contentType": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "bytes",
+        "sha256",
+        "host"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Apply several exact-text replacements to one file in a single atomic step and return a unified diff. Edits run in order and each sees the previous result. If any edit fails (old text missing or not unique), nothing is written. Use dry_run=true to preview the diff first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": {
+          "description": "if true, only return the diff and leave the file untouched",
+          "type": "boolean"
+        },
+        "edits": {
+          "description": "exact-text replacements applied in order; each needs old and new, and old must be unique unless replace_all is true",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "new": {
+                "type": "string"
+              },
+              "old": {
+                "type": "string"
+              },
+              "replace_all": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "old",
+              "new"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "edits"
+      ],
+      "type": "object"
+    },
+    "name": "edit_file",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "diff": {
+          "type": "string"
+        },
+        "dryRun": {
+          "type": "boolean"
+        },
+        "edits": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "replacements": {
+          "type": "integer"
+        },
+        "totalLines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "edits",
+        "replacements",
+        "dryRun",
+        "diff",
+        "totalLines"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Return metadata about a file or directory: size, modification time, and line count.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "path to inspect, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "file_info",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "isDir": {
+          "type": "boolean"
+        },
+        "lines": {
+          "type": "integer"
+        },
+        "modTime": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "isDir",
+        "size",
+        "modTime",
+        "lines"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Stage new, modified and deleted files under the given paths, or the whole workspace with all=true. Ignored files are never staged (no force option) and sensitive files such as .env or private keys are skipped and listed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "description": "stage every change in the workspace when paths is empty",
+          "type": "boolean"
+        },
+        "paths": {
+          "description": "files or directories to stage, relative to the workspace root",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_add",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "skippedSensitive": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "staged": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "staged"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Commit the staged changes with the given message. Never amends, never runs repository hooks and never signs. Refuses when nothing is staged or when a sensitive file is staged. Check git_diff with staged=true first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "author_email": {
+          "description": "optional author email; defaults to git config user.email",
+          "type": "string"
+        },
+        "author_name": {
+          "description": "optional author name; defaults to git config user.name",
+          "type": "string"
+        },
+        "message": {
+          "description": "commit message: a subject line, optionally a blank line and a body",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "name": "git_commit",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "hash": {
+          "type": "string"
+        },
+        "subject": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hash",
+        "branch",
+        "subject",
+        "files"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Create a new local branch at HEAD or at start, optionally switching to it. Existing branches are never overwritten.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "new branch name, e.g. feature/git-write",
+          "type": "string"
+        },
+        "start": {
+          "description": "optional commit or branch to start from (default HEAD)",
+          "type": "string"
+        },
+        "switch": {
+          "description": "switch to the new branch after creating it",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "git_create_branch",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Show `git diff` for the workspace or one path, optionally staged, as a summary (stat), or against a ref. Read-only; external diff and textconv programs never run, and sensitive files are excluded.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "optional file or directory, relative to the workspace root",
+          "type": "string"
+        },
+        "ref": {
+          "description": "optional commit or branch to compare against, e.g. HEAD~1",
+          "type": "string"
+        },
+        "staged": {
+          "description": "show staged changes (index vs HEAD) instead of unstaged ones",
+          "type": "boolean"
+        },
+        "stat": {
+          "description": "only show a per-file summary",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_diff",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository",
+        "output",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Create a git repository at the workspace root (initial branch main unless given). Refuses when the workspace already is a repository.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "initial branch name (default main)",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_init",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Show recent commits, one line each (hash, date, author, subject), for the workspace or one path. Read-only.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "number of commits to show (default 20, max 200)",
+          "type": "integer"
+        },
+        "path": {
+          "description": "optional file or directory, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_log",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository",
+        "output",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Show `git status --short --branch` for the workspace. Read-only; sensitive files are hidden.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "git_status",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "output": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository",
+        "output",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Switch the workspace to an existing local branch. Git refuses when uncommitted changes would be overwritten; there is no force option, so no work is lost. Non-conflicting uncommitted changes are carried over.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "existing local branch to switch to",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "git_switch_branch",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Remove paths (or everything with all=true) from the staging area. The files in the workspace are not changed.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "all": {
+          "description": "unstage everything when paths is empty",
+          "type": "boolean"
+        },
+        "paths": {
+          "description": "files or directories to unstage, relative to the workspace root",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_unstage",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Insert text before a 1-based line number. Use line = total_lines + 1 to append at the end.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "description": "1-based line to insert before; use total_lines+1 to append",
+          "type": "integer"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        },
+        "text": {
+          "description": "text to insert; a trailing newline is added if missing",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "text"
+      ],
+      "type": "object"
+    },
+    "name": "insert_text",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "line": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List files and directories inside the workspace, one level or recursively.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "directory to list; omit or use . for the workspace root",
+          "type": "string"
+        },
+        "recursive": {
+          "description": "walk the whole subtree instead of one level",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "name": "list_files",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "entries": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "isDir": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "size": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "name",
+              "path",
+              "isDir",
+              "size"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "entries"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List background processes started in this session with their status, readiness, PID, exit code and runtime.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "list_processes",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "processes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "argv": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "dir": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "integer"
+              },
+              "endedAt": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "exitCode": {
+                "type": "integer"
+              },
+              "logBytes": {
+                "type": "integer"
+              },
+              "logDropped": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "pid": {
+                "type": "integer"
+              },
+              "ready": {
+                "type": "boolean"
+              },
+              "running": {
+                "type": "boolean"
+              },
+              "startedAt": {
+                "type": "string"
+              },
+              "stopping": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "argv",
+              "pid",
+              "running",
+              "stopping",
+              "ready",
+              "exitCode",
+              "startedAt",
+              "durationMs",
+              "logBytes",
+              "logDropped"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "processes"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Create a directory (and any necessary parent directories) inside the workspace.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "directory path to create, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "mkdir_path",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Move or rename a file or directory within the workspace.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "source file or directory path, relative to workspace root",
+          "type": "string"
+        },
+        "to": {
+          "description": "destination file or directory path, relative to workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "name": "move_path",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read process stdout/stderr. Use after_seq with nextSeq from the previous response to fetch only new lines; omit it for the last tail_lines. Output is bounded by a per-process ring buffer.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "after_seq": {
+          "description": "only return lines newer than this cursor; use nextSeq from the previous call",
+          "type": "integer"
+        },
+        "name": {
+          "description": "process name returned by start_process",
+          "type": "string"
+        },
+        "tail_lines": {
+          "description": "number of trailing lines when after_seq is 0 (default 100, max 1000)",
+          "type": "integer"
+        },
+        "timestamps": {
+          "description": "prefix each line with its time (default true)",
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "process_logs",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "dir": {
+          "type": "string"
+        },
+        "dropped": {
+          "type": "boolean"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "lines": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "seq": {
+                "type": "integer"
+              },
+              "text": {
+                "type": "string"
+              },
+              "time": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "seq",
+              "time",
+              "text"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "logBytes": {
+          "type": "integer"
+        },
+        "logDropped": {
+          "type": "boolean"
+        },
+        "logs": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "nextSeq": {
+          "type": "integer"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "stopping": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "argv",
+        "pid",
+        "running",
+        "stopping",
+        "ready",
+        "exitCode",
+        "startedAt",
+        "durationMs",
+        "logBytes",
+        "logDropped",
+        "logs",
+        "lines",
+        "nextSeq",
+        "truncated",
+        "dropped"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read a text file. Returns numbered lines plus the raw content of the requested slice.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "maximum number of lines to return (default all)",
+          "type": "integer"
+        },
+        "offset": {
+          "description": "1-based line to start reading from (default 1)",
+          "type": "integer"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "read_file",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "endLine": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "startLine": {
+          "type": "integer"
+        },
+        "totalLines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "content",
+        "startLine",
+        "endLine",
+        "totalLines",
+        "size"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Replace an inclusive range of 1-based lines with new content. Equivalent to delete_lines + insert_text in one atomic operation.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "description": "first line to replace (1-based, inclusive)",
+          "type": "integer"
+        },
+        "new_content": {
+          "description": "replacement text; replaces the entire line range",
+          "type": "string"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        },
+        "to": {
+          "description": "last line to replace (1-based, inclusive)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "from",
+        "to",
+        "new_content"
+      ],
+      "type": "object"
+    },
+    "name": "replace_lines",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "totalLines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "totalLines"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Replace an exact substring in a file. By default the old text must occur exactly once; set replace_all to replace every occurrence.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "new": {
+          "description": "replacement text",
+          "type": "string"
+        },
+        "old": {
+          "description": "exact text to find (must be unique unless replace_all is true)",
+          "type": "string"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        },
+        "replace_all": {
+          "description": "replace every occurrence instead of requiring a unique match",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "old",
+        "new"
+      ],
+      "type": "object"
+    },
+    "name": "replace_text",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "count"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Stop a background process and start it again with the same command, working directory and environment.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "process name returned by start_process",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "description": "graceful shutdown grace period in seconds (default 5)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "restart_process",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "dir": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "logBytes": {
+          "type": "integer"
+        },
+        "logDropped": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "stopping": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "argv",
+        "pid",
+        "running",
+        "stopping",
+        "ready",
+        "exitCode",
+        "startedAt",
+        "durationMs",
+        "logBytes",
+        "logDropped"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Run an allowlisted command inside the workspace root without a shell. Allowed prefixes: go test, go vet. Allowed exact commands (no extra arguments): bun run dev. Non-zero exit codes are reported in the result.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "description": "additional arguments appended to the command",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "command": {
+          "description": "command to run; must match an allowlisted prefix such as \"go test\"",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "description": "optional timeout in seconds, capped by the server maximum",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "name": "run_command",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "command": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "output": {
+          "type": "string"
+        },
+        "timedOut": {
+          "type": "boolean"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "command",
+        "argv",
+        "exitCode",
+        "output",
+        "truncated",
+        "timedOut",
+        "durationMs"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dry_run": {
+          "description": "if true, show what would change without writing",
+          "type": "boolean"
+        },
+        "glob": {
+          "description": "optional glob filter, e.g. *.go or **/*.go",
+          "type": "string"
+        },
+        "max_files": {
+          "description": "maximum number of files to modify (default 50)",
+          "type": "integer"
+        },
+        "path": {
+          "description": "directory to search; omit for the workspace root",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "Go regular expression to search for",
+          "type": "string"
+        },
+        "replacement": {
+          "description": "replacement string; supports $1, $2 for capture groups",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "replacement"
+      ],
+      "type": "object"
+    },
+    "name": "search_and_replace",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "dryRun": {
+          "type": "boolean"
+        },
+        "files": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "changed": {
+                "type": "boolean"
+              },
+              "path": {
+                "type": "string"
+              },
+              "replacements": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "path",
+              "replacements",
+              "changed"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "filesChanged": {
+          "type": "integer"
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "totalReplacements": {
+          "type": "integer"
+        },
+        "truncated": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "pattern",
+        "replacement",
+        "dryRun",
+        "filesChanged",
+        "totalReplacements",
+        "files",
+        "truncated"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Search file contents with a regular expression and return matching paths with line numbers.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "glob": {
+          "description": "optional glob filter on relative paths, e.g. *.go or **/*.go",
+          "type": "string"
+        },
+        "max_results": {
+          "description": "maximum number of matches to return (default 100)",
+          "type": "integer"
+        },
+        "path": {
+          "description": "directory to search; omit for the workspace root",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "Go regular expression to search for",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern"
+      ],
+      "type": "object"
+    },
+    "name": "search_text",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "matches": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "line": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "line",
+              "text"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "matches"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Start an allowlisted command as a long-lived background process inside the workspace root. It keeps running across tool calls, so use process_logs to inspect output and stop_process to end it. Commands never go through a shell. Allowed prefixes: go test, go vet. Allowed exact commands (no extra arguments): bun run dev. ",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "description": "additional arguments appended to the command",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "command": {
+          "description": "command to start; must match the same allowlist as run_command, e.g. \"bun run dev\"",
+          "type": "string"
+        },
+        "cwd": {
+          "description": "optional working directory relative to the workspace root",
+          "type": "string"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "optional environment variables; allowed keys: PORT, HOST, HOSTNAME, NODE_ENV, BUN_ENV, CI",
+          "type": "object"
+        },
+        "name": {
+          "description": "optional process name (letters, digits, _ or -); generated when empty",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "description": "readiness timeout in seconds (default 10, max 60)",
+          "type": "integer"
+        },
+        "wait_for_log": {
+          "description": "optional regular expression that must match process output before start returns",
+          "type": "string"
+        },
+        "wait_for_port": {
+          "description": "optional TCP port that must accept connections before start returns",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "name": "start_process",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "dir": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "logBytes": {
+          "type": "integer"
+        },
+        "logDropped": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "stopping": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "argv",
+        "pid",
+        "running",
+        "stopping",
+        "ready",
+        "exitCode",
+        "startedAt",
+        "durationMs",
+        "logBytes",
+        "logDropped"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Stop every running background process. Useful for resetting workspace state before starting again.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "timeout_seconds": {
+          "description": "graceful shutdown grace period in seconds (default 5)",
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "name": "stop_all_processes",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "processes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "argv": {
+                "items": {
+                  "type": "string"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              },
+              "dir": {
+                "type": "string"
+              },
+              "durationMs": {
+                "type": "integer"
+              },
+              "endedAt": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "exitCode": {
+                "type": "integer"
+              },
+              "logBytes": {
+                "type": "integer"
+              },
+              "logDropped": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              },
+              "pid": {
+                "type": "integer"
+              },
+              "ready": {
+                "type": "boolean"
+              },
+              "running": {
+                "type": "boolean"
+              },
+              "startedAt": {
+                "type": "string"
+              },
+              "stopping": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "name",
+              "argv",
+              "pid",
+              "running",
+              "stopping",
+              "ready",
+              "exitCode",
+              "startedAt",
+              "durationMs",
+              "logBytes",
+              "logDropped"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "processes"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Stop a background process and its children. Sends SIGTERM first and escalates to SIGKILL after the grace period. Set wait=false to return immediately.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "process name returned by start_process",
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "description": "graceful shutdown grace period in seconds (default 5)",
+          "type": "integer"
+        },
+        "wait": {
+          "description": "wait for exit before returning (default true); false signals and returns immediately",
+          "type": [
+            "null",
+            "boolean"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "name": "stop_process",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "argv": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "dir": {
+          "type": "string"
+        },
+        "durationMs": {
+          "type": "integer"
+        },
+        "endedAt": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": "integer"
+        },
+        "logBytes": {
+          "type": "integer"
+        },
+        "logDropped": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pid": {
+          "type": "integer"
+        },
+        "ready": {
+          "type": "boolean"
+        },
+        "running": {
+          "type": "boolean"
+        },
+        "startedAt": {
+          "type": "string"
+        },
+        "stopping": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "argv",
+        "pid",
+        "running",
+        "stopping",
+        "ready",
+        "exitCode",
+        "startedAt",
+        "durationMs",
+        "logBytes",
+        "logDropped"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Check the syntax of a file without running it. Go (.go) and JSON (.json) get a full parse; JavaScript (.js/.mjs/.cjs), TypeScript (.ts/.mts/.cts) and CSS (.css) get a delimiter check (balanced brackets, closed strings, template literals, regexes and comments). Other types return valid=true with check=none.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "validate_syntax",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "type": "string"
+        },
+        "errors": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "col": {
+                "type": "integer"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "line",
+              "col",
+              "message"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "language": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "valid": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "language",
+        "valid",
+        "errors"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "type": "object"
+    },
+    "name": "workspace_stats",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "byExtension": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "files": {
+                "type": "integer"
+              },
+              "lines": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files",
+              "lines",
+              "bytes"
+            ],
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "largestFiles": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "lines": {
+                "type": "integer"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "lines"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "recentFiles": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "modTime": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "modTime"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "totalBytes": {
+          "type": "integer"
+        },
+        "totalFiles": {
+          "type": "integer"
+        },
+        "totalLines": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "totalFiles",
+        "totalLines",
+        "totalBytes",
+        "byExtension",
+        "largestFiles",
+        "recentFiles"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "readOnlyHint": false
+    },
+    "description": "Create or overwrite a file with the given content. Parent directories are created automatically. Writes are atomic.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "full file content to write",
+          "type": "string"
+        },
+        "path": {
+          "description": "path to the file, relative to the workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "write_file",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "bytes": {
+          "type": "integer"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "bytes"
+      ],
+      "type": "object"
+    }
+  }
+]

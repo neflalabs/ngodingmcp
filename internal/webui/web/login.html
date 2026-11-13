@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NgodingMCP · Login</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body class="login-body">
+  <button type="button" class="ghost theme-toggle login-theme" data-theme-toggle title="Toggle theme">☾</button>
+  <form class="login-card" method="post" action="/login">
+    <div class="brand">Ngoding<span>MCP</span></div>
+    <p class="muted">Enter the server token.</p>
+    <input type="password" name="token" id="token" placeholder="token" autocomplete="current-password" autofocus>
+    <p class="error" id="error">Invalid token. Try again.</p>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+  <script>
+    if (new URLSearchParams(location.search).get("error") === "1") {
+      document.getElementById("error").classList.add("visible");
+    }
+  </script>
+</body>
+</html>
