@@ -133,7 +133,7 @@ Subcommand yang tersedia:
 | `ngodingmcp` | Server; di terminal interaktif membuka TUI |
 | `ngodingmcp serve [flags]` | Start server HTTP secara eksplisit |
 | `ngodingmcp tui [flags]` | Buka control panel (`--root`, `--addr`, `--token` sebagai preset) |
-| `ngodingmcp version` | Cetak versi (juga `-v`, `--version`) |
+| `ngodingmcp version` | Cetak versi, commit, dan waktu build (juga `-v`, `--version`) |
 | `ngodingmcp help` | Tampilkan bantuan (juga `-h`, `--help`) |
 
 Flag lama tetap kompatibel: `ngodingmcp --addr ... --root ...` masih menjalankan
@@ -162,6 +162,54 @@ lalu environment menimpa config, dan flag menimpa keduanya:
 | `--upload-max-bytes` | `NGODINGMCP_UPLOAD_MAX_BYTES` | `20971520` (20 MiB per file) |
 
 Buka `http://127.0.0.1:8080/`, masukkan token, lalu edit seperti editor biasa.
+
+### Versi build
+
+Format versi: `<CalVer>+<commit>[.dirty]`, misalnya:
+
+| Versi | Artinya |
+|---|---|
+| `v2026.11.12+4deb6fa` | build bersih dari commit `4deb6fa` |
+| `v2026.11.12+4deb6fa.dirty` | dibuild dengan perubahan yang belum di-commit |
+| `v2026.11.12+dev` | tanpa info git (`go run`, source di luar repo git) |
+
+- **CalVer** (`v2026.11.12`) diganti manual di `internal/buildinfo/buildinfo.go`,
+  pakai nomor yang sama dengan dokumen TaskDev.
+- **Commit** dan tanda `.dirty` diambil otomatis dari info VCS yang ditanam `go build`
+  di dalam repo git. Jadi `go build -o ngodingmcp .` biasa sudah cukup, tanpa flag apa pun.
+- **Waktu build** selalu ikut berubah tiap rebuild, walaupun commit-nya sama.
+  Build biasa memakai waktu file binary; `make build` menanam waktunya lewat `-ldflags`.
+
+Versi yang sama muncul di: header TUI (plus waktu build), status bar web UI
+(tooltip berisi waktu build), field `version`/`built` di `GET /api/info`,
+`serverInfo.version` di handshake MCP, banner stderr saat `serve`, dan
+`ngodingmcp version`:
+
+```
+$ ./ngodingmcp version
+ngodingmcp v2026.11.12+4deb6fa.dirty
+  commit:    4deb6fa (with uncommitted changes)
+  committed: 2026-11-13 17:20 WIT
+  built:     2026-11-13 17:45 WIT
+  go:        go1.26.x linux/amd64
+```
+
+Cara build:
+
+```sh
+go build -o ngodingmcp .              # dev: versi + commit otomatis
+make build                            # binary statis, waktu build ditanam
+make release VERSION=v2026.12.0       # cross-compile ke dist/, override CalVer
+make version                          # build lalu cetak versinya
+```
+
+Semua bagian bisa ditimpa saat link, misalnya untuk build di luar repo git:
+
+```sh
+go build -ldflags "-X ngodingmcp/internal/buildinfo.version=v2026.12.0 \
+  -X ngodingmcp/internal/buildinfo.commit=abc1234 \
+  -X ngodingmcp/internal/buildinfo.buildTime=2026-12-01T00:00:00Z" -o ngodingmcp .
+```
 
 ### Download file dari URL (opt-in)
 
@@ -431,6 +479,7 @@ ngodingmcp/
 ├── internal/
 │   ├── app/                    # wiring server bersama (dipakai CLI & TUI)
 │   ├── auth/                   # token auth (Bearer/X-API-Key/cookie)
+│   ├── buildinfo/              # versi binary: CalVer + commit git + waktu build
 │   ├── config/                 # setting TUI + run policy (di luar workspace)
 │   ├── tui/                    # control panel (bubbletea)
 │   ├── runner/                 # eksekusi command allowlisted (opt-in)
@@ -456,7 +505,7 @@ ngodingmcp/
 │   │   └── testdata/tools.golden.json  # kontrak semua tool (TestToolContract)
 │   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
 │       └── web/                # index.html, login.html, app.js, style.css
-└── internal/*/*_test.go        # config, gitwrite, mcpserver, procman, tui, workspace
+└── internal/*/*_test.go        # buildinfo, config, gitwrite, mcpserver, procman, tui, webui, workspace
 ```
 
 ## Test

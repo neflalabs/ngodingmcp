@@ -68,3 +68,31 @@ func TestProcessEndpoints(t *testing.T) {
 		t.Errorf("POST stop-all = %d: %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestInfoReportsVersionAndBuildTime(t *testing.T) {
+	ws, err := workspace.New(t.TempDir(), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := New(ws, auth.New("token", "session"), "v2026.11.12+4deb6fa").API()
+
+	rec := httptest.NewRecorder()
+	api.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/info", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /info = %d: %s", rec.Code, rec.Body.String())
+	}
+	var info struct {
+		Version string `json:"version"`
+		Built   string `json:"built"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &info); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if info.Version != "v2026.11.12+4deb6fa" {
+		t.Errorf("version = %q, want the version passed to New", info.Version)
+	}
+	// The test binary is an executable on disk, so its build time is known.
+	if _, err := time.Parse(time.RFC3339, info.Built); err != nil {
+		t.Errorf("built = %q, want an RFC 3339 time: %v", info.Built, err)
+	}
+}

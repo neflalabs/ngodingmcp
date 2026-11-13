@@ -19,14 +19,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"ngodingmcp/internal/app"
+	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/tui"
 )
-
-// version can be overridden at build time:
-//
-//	go build -ldflags "-X main.version=1.2.3"
-var version = "v2026.11.4"
 
 const usageText = `NgodingMCP — sandboxed text-editor MCP server
 
@@ -34,7 +30,7 @@ Usage:
   ngodingmcp                    Start the server, or open the control panel in a terminal
   ngodingmcp serve [flags]      Start the HTTP server
   ngodingmcp tui [flags]        Open the terminal control panel
-  ngodingmcp version            Print the version
+  ngodingmcp version            Print the version, commit and build time
   ngodingmcp help               Show this help
 
 Server flags:
@@ -98,7 +94,7 @@ func main() {
 	case "tui":
 		runTUIOrDie(args[1:])
 	case "version", "-version", "--version", "-v":
-		fmt.Println("ngodingmcp " + version)
+		fmt.Print(buildinfo.Get().Details())
 	case "help", "-h", "--help":
 		fmt.Print(usageText)
 	default:
@@ -136,7 +132,7 @@ func stdinIsTerminal() bool {
 }
 
 func runTUI(root, addr, token string) error {
-	p := tea.NewProgram(tui.NewWithPreset(version, root, addr, token), tea.WithAltScreen())
+	p := tea.NewProgram(tui.NewWithPreset(buildinfo.Version(), root, addr, token), tea.WithAltScreen())
 	_, err := p.Run()
 	return err
 }
@@ -244,7 +240,7 @@ func runServer(opts *serverOptions) error {
 		DownloadAllowHosts: splitList(opts.downloadHosts),
 		DownloadMaxBytes:   opts.downloadMaxBytes,
 		UploadMaxBytes:     opts.uploadMaxBytes,
-		Version:            version,
+		Version:            buildinfo.Version(),
 		Logger:             logger,
 	})
 	if err != nil {
@@ -267,7 +263,11 @@ func runServer(opts *serverOptions) error {
 }
 
 func printBanner(srv *app.Server) {
-	fmt.Fprintf(os.Stderr, "\nNgodingMCP %s\n", version)
+	info := buildinfo.Get()
+	fmt.Fprintf(os.Stderr, "\nNgodingMCP %s\n", info.Version())
+	if built := info.Built(); built != "" {
+		fmt.Fprintf(os.Stderr, "  built:     %s\n", built)
+	}
 	fmt.Fprintf(os.Stderr, "  workspace: %s\n", srv.Root())
 	fmt.Fprintf(os.Stderr, "  web UI:    %s\n", srv.UIURL())
 	fmt.Fprintf(os.Stderr, "  MCP:       %s\n", srv.MCPURL())

@@ -335,6 +335,8 @@ input:focus, textarea:focus { border-color: var(--focus-border); }
   font-family: var(--mono);
 }
 .statusbar .error { color: var(--danger); }
+.statusbar .app-version { opacity: .75; white-space: nowrap; }
+.statusbar .app-version:empty { display: none; }
 
 /* Modals */
 .modal {
@@ -719,7 +721,7 @@ input:focus, textarea:focus { border-color: var(--focus-border); }
 .ws-form select:focus { border-color: var(--focus-border); }
 
 @media (max-width: 720px) {
-  .ws-label, .root { display: none; }
+  .ws-label, .root, .statusbar .app-version { display: none; }
   .ws-switch { max-width: 45vw; }
   .ws-form-row { flex-direction: column; gap: 0; }
 }

@@ -1209,12 +1209,25 @@ window.addEventListener("beforeunload", (ev) => {
   }
 });
 
+// showVersion puts the server version in the status bar; the build time is in
+// the tooltip (also on the brand), so a rebuilt binary is easy to recognise.
+function showVersion(info) {
+  if (!info.version) return;
+  const built = info.built ? new Date(info.built).toLocaleString() : "";
+  const label = "NgodingMCP " + info.version + (built ? "\nbuilt " + built : "");
+  $("appVersion").textContent = info.version;
+  $("appVersion").title = label;
+  const brand = document.querySelector(".topbar .brand");
+  if (brand) brand.title = label;
+}
+
 (async function init() {
   updateUI();
   try {
     const info = await api("/info");
     $("rootPath").textContent = info.root;
     $("rootPath").title = info.root;
+    showVersion(info);
     if (info.uploadMaxBytes > 0) upload.maxBytes = info.uploadMaxBytes;
     if (info.workspacesEnabled) {
       $("btnWorkspaces").classList.remove("hidden");

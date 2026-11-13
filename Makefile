@@ -1,9 +1,19 @@
 BINARY := ngodingmcp
-VERSION ?= v2026.11.4
-LDFLAGS := -s -w -X main.version=$(VERSION)
+PKG := ngodingmcp/internal/buildinfo
+
+# The version comes from internal/buildinfo (CalVer line + git commit, which
+# go build embeds automatically). Override the CalVer line for a release with:
+#   make release VERSION=v2026.12.0
+VERSION ?=
+BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+LDFLAGS := -s -w -X $(PKG).buildTime=$(BUILD_TIME)
+ifneq ($(strip $(VERSION)),)
+LDFLAGS += -X $(PKG).version=$(VERSION)
+endif
 GOFLAGS := -trimpath
 
-.PHONY: build release clean test
+.PHONY: build release clean test version
 
 # Static, self-contained binary (no libc dependency).
 build:
@@ -18,6 +28,10 @@ release:
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o dist/$(BINARY)-darwin-arm64 .
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o dist/$(BINARY)-windows-amd64.exe .
 	@ls -lh dist/
+
+# Build, then print the version of the new binary.
+version: build
+	./$(BINARY) version
 
 test:
 	go test ./...

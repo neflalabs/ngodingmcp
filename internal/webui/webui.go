@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"ngodingmcp/internal/auth"
+	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/procman"
 	"ngodingmcp/internal/workspace"
 )
@@ -198,6 +199,7 @@ func (u *UI) handleSearchReplace(w http.ResponseWriter, r *http.Request) {
 type infoResponse struct {
 	Root       string `json:"root"`
 	Version    string `json:"version"`
+	Built      string `json:"built,omitempty"` // RFC 3339 build time of the binary
 	MaxRead    int64  `json:"maxReadBytes"`
 	Processes  bool   `json:"processesEnabled"`
 	UploadMax  int64  `json:"uploadMaxBytes"`
@@ -205,9 +207,14 @@ type infoResponse struct {
 }
 
 func (u *UI) handleInfo(w http.ResponseWriter, r *http.Request) {
+	var built string
+	if t := buildinfo.Get().BuildTime; !t.IsZero() {
+		built = t.Format(time.RFC3339)
+	}
 	writeJSON(w, http.StatusOK, infoResponse{
 		Root:       u.ws.Root(),
 		Version:    u.version,
+		Built:      built,
 		MaxRead:    u.ws.MaxRead(),
 		Processes:  u.procs != nil,
 		UploadMax:  u.uploadLimit(),

@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"ngodingmcp/internal/app"
+	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/procman"
 )
@@ -61,6 +62,7 @@ type tickMsg struct{}
 // Model is the Bubble Tea model for the control panel.
 type Model struct {
 	version string
+	built   string // build time of the binary for the header; empty when unknown
 	inputs  [fieldCount]textinput.Model
 	focus   int
 
@@ -92,7 +94,7 @@ func New(version string) *Model {
 func NewWithPreset(version, root, addr, token string) *Model {
 	saved := config.Load()
 
-	m := &Model{version: version, logs: NewLogBuffer(500)}
+	m := &Model{version: version, built: buildinfo.Get().Built(), logs: NewLogBuffer(500)}
 
 	defaults := [fieldCount]string{
 		firstNonEmpty(root, saved.Root, os.Getenv("NGODINGMCP_ROOT"), defaultRoot()),
@@ -219,12 +221,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+// headerVersion is the version shown in the header, plus the build time when
+// known, so every rebuild is visible even when the commit did not change.
+func (m *Model) headerVersion() string {
+	if m.built == "" {
+		return m.version
+	}
+	return m.version + "  ·  built " + m.built
+}
+
 // View implements tea.Model.
 func (m *Model) View() string {
 	var b strings.Builder
 	procs := m.processInfos()
 
-	b.WriteString(titleStyle.Render("NgodingMCP") + dimStyle.Render("  "+m.version+"  ·  control panel") + "\n\n")
+	b.WriteString(titleStyle.Render("NgodingMCP") + dimStyle.Render("  "+m.headerVersion()+"  ·  control panel") + "\n\n")
 
 	for i := range m.inputs {
 		focused := i == m.focus

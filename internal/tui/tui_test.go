@@ -69,3 +69,15 @@ func TestNewWithPresetFlagsOverrideConfig(t *testing.T) {
 		t.Error("runEnabled should default to false")
 	}
 }
+
+func TestHeaderShowsVersionAndBuildTime(t *testing.T) {
+	m := &Model{version: "v2026.11.12+4deb6fa.dirty", built: "2026-11-13 17:45 WIT"}
+	if got, want := m.headerVersion(), "v2026.11.12+4deb6fa.dirty  ·  built 2026-11-13 17:45 WIT"; got != want {
+		t.Fatalf("headerVersion() = %q, want %q", got, want)
+	}
+
+	m.built = ""
+	if got := m.headerVersion(); got != "v2026.11.12+4deb6fa.dirty" {
+		t.Fatalf("headerVersion() without build time = %q", got)
+	}
+}
