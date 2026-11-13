@@ -139,6 +139,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
+		m.syncRoot()
 		return m, tickCmd()
 
 	case tea.KeyMsg:
@@ -370,15 +371,28 @@ func (m *Model) start() {
 	m.inputs[fieldToken].SetValue(srv.Token())
 	m.statusMsg = "started; workspace " + srv.Root()
 	m.logs.Add("server listening on " + srv.BaseURL())
-	_ = config.Save(config.Config{
-		Root:  srv.Root(),
-		Addr:  strings.TrimSpace(m.inputs[fieldAddr].Value()),
-		Token: srv.Token(),
-		Run:   config.RunConfig{Enabled: m.runEnabled},
-
-		AllowSensitive: m.allowSensitive,
-		AllowDownload:  m.allowDownload,
+	// Update keeps the saved workspaces of the Web UI selector.
+	addr := strings.TrimSpace(m.inputs[fieldAddr].Value())
+	_ = config.Update(func(c *config.Config) {
+		c.Root = srv.Root()
+		c.Addr = addr
+		c.Token = srv.Token()
+		c.Run = config.RunConfig{Enabled: m.runEnabled}
+		c.AllowSensitive = m.allowSensitive
+		c.AllowDownload = m.allowDownload
 	})
+}
+
+// syncRoot shows a workspace switched from the Web UI in the root field,
+// unless the user is editing that field right now.
+func (m *Model) syncRoot() {
+	if !m.running || m.srv == nil || m.focus == fieldRoot {
+		return
+	}
+	if root := m.srv.Root(); root != m.inputs[fieldRoot].Value() {
+		m.inputs[fieldRoot].SetValue(root)
+		m.statusMsg = "workspace switched to " + root
+	}
 }
 
 func (m *Model) stop() {

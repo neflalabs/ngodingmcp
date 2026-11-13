@@ -45,7 +45,7 @@ func (w *Workspace) CheckWritable(rel string, overwrite bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if full == w.root {
+	if full == w.Root() {
 		return "", ErrIsDir
 	}
 	info, err := os.Stat(full)
@@ -73,7 +73,7 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 	if err != nil {
 		return StreamResult{}, err
 	}
-	full := filepath.Join(w.root, filepath.FromSlash(relp))
+	full := filepath.Join(w.Root(), filepath.FromSlash(relp))
 	dir := filepath.Dir(full)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return StreamResult{}, err

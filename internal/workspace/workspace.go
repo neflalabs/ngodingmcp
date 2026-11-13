@@ -18,6 +18,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -34,8 +36,19 @@ var (
 	ErrBinary = errors.New("file appears to be binary")
 )
 
-// Workspace is a sandboxed root directory.
+// Workspace is a sandboxed root directory. The root and its settings can be
+// switched at runtime (see switch.go); callers that need one consistent root
+// for a whole operation hold the workspace with Hold.
 type Workspace struct {
+	st atomic.Pointer[state]
+	// gate is held for reading by every tool call or API request (Hold) and
+	// for writing while the workspace is switched (Switch).
+	gate sync.RWMutex
+}
+
+// state is the immutable root and settings of one workspace. A switch
+// replaces the whole value.
+type state struct {
 	root    string
 	maxRead int64
 	// allowSensitive disables the sensitive-path guard (see sensitive.go).
@@ -55,22 +68,31 @@ func New(root string, maxRead int64) (*Workspace, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve root symlinks: %w", err)
 	}
-	if maxRead <= 0 {
-		maxRead = 2 << 20
+	w := &Workspace{}
+	w.st.Store(&state{root: resolved, maxRead: normalizeMaxRead(maxRead)})
+	return w, nil
+}
+
+// DefaultMaxRead is the per-file limit used when none is given.
+const DefaultMaxRead int64 = 2 << 20
+
+func normalizeMaxRead(n int64) int64 {
+	if n <= 0 {
+		return DefaultMaxRead
 	}
-	return &Workspace{root: resolved, maxRead: maxRead}, nil
+	return n
 }
 
 // Root returns the absolute, symlink-resolved workspace root.
-func (w *Workspace) Root() string { return w.root }
+func (w *Workspace) Root() string { return w.st.Load().root }
 
 // MaxRead returns the maximum readable file size in bytes.
-func (w *Workspace) MaxRead() int64 { return w.maxRead }
+func (w *Workspace) MaxRead() int64 { return w.st.Load().maxRead }
 
 // relPath converts an absolute path into a slash-separated path relative to
 // the workspace root.
 func (w *Workspace) relPath(full string) string {
-	rel, err := filepath.Rel(w.root, full)
+	rel, err := filepath.Rel(w.Root(), full)
 	if err != nil || rel == "." {
 		return ""
 	}
@@ -92,8 +114,8 @@ func (w *Workspace) resolve(rel string) (string, error) {
 	if rel == "" {
 		rel = "."
 	}
-	full := filepath.Join(w.root, filepath.FromSlash(path.Clean(rel)))
-	if isOutside(w.root, full) {
+	full := filepath.Join(w.Root(), filepath.FromSlash(path.Clean(rel)))
+	if isOutside(w.Root(), full) {
 		return "", ErrOutsideRoot
 	}
 	// Lexical checks are not enough: a symlink inside the workspace may point
@@ -141,7 +163,7 @@ func (w *Workspace) checkSymlinkEscape(full string) error {
 			if err != nil {
 				return fmt.Errorf("resolve symlinks: %w", err)
 			}
-			if isOutside(w.root, resolved) {
+			if isOutside(w.Root(), resolved) {
 				return ErrOutsideRoot
 			}
 			return nil
@@ -203,8 +225,8 @@ func (w *Workspace) readAll(rel string) (string, string, error) {
 	if info.IsDir() {
 		return "", "", ErrIsDir
 	}
-	if info.Size() > w.maxRead {
-		return "", "", fmt.Errorf("%w: %d bytes exceeds limit %d", ErrTooLarge, info.Size(), w.maxRead)
+	if info.Size() > w.MaxRead() {
+		return "", "", fmt.Errorf("%w: %d bytes exceeds limit %d", ErrTooLarge, info.Size(), w.MaxRead())
 	}
 	data, err := os.ReadFile(full)
 	if err != nil {
@@ -555,7 +577,7 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 		if err != nil {
 			return err
 		}
-		if info.Size() > w.maxRead {
+		if info.Size() > w.MaxRead() {
 			return nil
 		}
 		data, err := os.ReadFile(p)
@@ -606,7 +628,7 @@ func (w *Workspace) Stat(rel string) (Info, error) {
 		Size:    info.Size(),
 		ModTime: info.ModTime(),
 	}
-	if !info.IsDir() && info.Size() <= w.maxRead {
+	if !info.IsDir() && info.Size() <= w.MaxRead() {
 		if data, err := os.ReadFile(full); err == nil && !looksBinary(data) {
 			out.Lines = countLines(string(data))
 		}
@@ -652,7 +674,7 @@ func (w *Workspace) Delete(rel string, recursive ...bool) error {
 	if err != nil {
 		return err
 	}
-	if full == w.root {
+	if full == w.Root() {
 		return errors.New("refusing to delete the workspace root")
 	}
 	if len(recursive) > 0 && recursive[0] {
@@ -667,7 +689,7 @@ func (w *Workspace) Delete(rel string, recursive ...bool) error {
 // checkNoSensitiveInside refuses to touch a directory tree that contains a
 // blocked entry, so a recursive delete cannot wipe a .git or .env by accident.
 func (w *Workspace) checkNoSensitiveInside(full string) error {
-	if w.allowSensitive {
+	if w.AllowSensitive() {
 		return nil
 	}
 	info, err := os.Lstat(full)
@@ -760,11 +782,11 @@ func (w *Workspace) Stats() (WorkspaceStats, error) {
 	var totalLines int
 	var totalBytes int64
 
-	err := filepath.WalkDir(w.root, func(p string, d fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(w.Root(), func(p string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
-		if skip, err := w.skipBlocked(w.root, p, d); skip {
+		if skip, err := w.skipBlocked(w.Root(), p, d); skip {
 			return err
 		}
 		if d.IsDir() {
@@ -777,7 +799,7 @@ func (w *Workspace) Stats() (WorkspaceStats, error) {
 		if err != nil {
 			return nil // skip unreadable
 		}
-		if info.Size() > w.maxRead {
+		if info.Size() > w.MaxRead() {
 			return nil // too large
 		}
 		data, err := os.ReadFile(p)
@@ -918,7 +940,7 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 		if err != nil {
 			return nil
 		}
-		if info.Size() > w.maxRead {
+		if info.Size() > w.MaxRead() {
 			return nil
 		}
 		data, err := os.ReadFile(p)
@@ -998,8 +1020,8 @@ func (w *Workspace) ValidateSyntax(rel string) (SyntaxResult, error) {
 	if info.IsDir() {
 		return SyntaxResult{}, ErrIsDir
 	}
-	if info.Size() > w.maxRead {
-		return SyntaxResult{}, fmt.Errorf("%w: %d bytes exceeds limit %d", ErrTooLarge, info.Size(), w.maxRead)
+	if info.Size() > w.MaxRead() {
+		return SyntaxResult{}, fmt.Errorf("%w: %d bytes exceeds limit %d", ErrTooLarge, info.Size(), w.MaxRead())
 	}
 	relp := w.relPath(full)
 	ext := strings.ToLower(filepath.Ext(full))
@@ -1149,7 +1171,7 @@ func (w *Workspace) countOne(rel string) (TokenCount, error) {
 		sz := fi.Size()
 		totalBytes += sz
 		// Count lines for non-binary text files within size limit.
-		if sz <= w.maxRead {
+		if sz <= w.MaxRead() {
 			if data, err := os.ReadFile(p); err == nil && !looksBinary(data) {
 				totalLines += countLines(string(data))
 			}
@@ -1180,7 +1202,7 @@ func (w *Workspace) countFile(full, relp string) (TokenCount, error) {
 	}
 	sz := info.Size()
 	var lines int
-	if sz <= w.maxRead {
+	if sz <= w.MaxRead() {
 		if data, err := os.ReadFile(full); err == nil && !looksBinary(data) {
 			lines = countLines(string(data))
 		}

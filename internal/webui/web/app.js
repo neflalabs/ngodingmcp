@@ -29,7 +29,12 @@ async function api(path, options = {}) {
     throw new Error("unauthorized");
   }
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    const err = new Error(data.error || res.statusText);
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
   return data;
 }
 
@@ -839,7 +844,283 @@ async function sendUpload() {
   }
 }
 
+// --- Sidebar --------------------------------------------------------------
+
+const SIDEBAR_KEY = "ngodingmcp.sidebarCollapsed";
+
+function setSidebarCollapsed(collapsed, remember = true) {
+  $("layout").classList.toggle("sidebar-collapsed", collapsed);
+  const btn = $("btnSidebar");
+  btn.setAttribute("aria-expanded", String(!collapsed));
+  btn.title = (collapsed ? "Show sidebar" : "Collapse sidebar") + " (Ctrl+B)";
+  if (remember) {
+    try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (_) { /* storage blocked */ }
+  }
+}
+
+function toggleSidebar() {
+  setSidebarCollapsed(!$("layout").classList.contains("sidebar-collapsed"));
+}
+
+{
+  let collapsed = false;
+  try { collapsed = localStorage.getItem(SIDEBAR_KEY) === "1"; } catch (_) { /* storage blocked */ }
+  // Apply without the slide animation on page load.
+  $("layout").style.transition = "none";
+  setSidebarCollapsed(collapsed, false);
+  requestAnimationFrame(() => { $("layout").style.transition = ""; });
+}
+
+// --- Workspaces -----------------------------------------------------------
+
+const wsState = { data: null, busy: false };
+
+function wsSensitiveLabel(allow) {
+  return allow ? "sensitive files allowed" : "sensitive files blocked";
+}
+
+function renderWorkspaceButton() {
+  const d = wsState.data;
+  if (!d) return;
+  const name = $("wsName");
+  name.textContent = d.activeName || "unsaved folder";
+  name.classList.toggle("unsaved", !d.activeName);
+  $("btnWorkspaces").title = "Switch workspace\n" + d.activeRoot;
+  $("rootPath").textContent = d.activeRoot;
+  $("rootPath").title = d.activeRoot;
+}
+
+async function loadWorkspaces() {
+  wsState.data = await api("/workspaces");
+  renderWorkspaceButton();
+  return wsState.data;
+}
+
+function renderWorkspaces() {
+  const d = wsState.data;
+  if (!d) return;
+  const active = $("wsActive");
+  active.innerHTML = "";
+  active.append("Active: ");
+  const code = document.createElement("code");
+  code.textContent = d.activeRoot;
+  active.append(code);
+  active.append(" · " + wsSensitiveLabel(d.effective.allowSensitive) + " · max " + formatBytes(d.effective.maxFileBytes) + " per file");
+
+  const list = $("wsList");
+  list.innerHTML = "";
+  for (const w of d.workspaces) {
+    const li = document.createElement("li");
+    li.className = "ws-item" + (w.active ? " active" : "");
+
+    const main = document.createElement("div");
+    main.className = "ws-item-main";
+    const nameRow = document.createElement("div");
+    nameRow.className = "ws-item-name";
+    nameRow.append(w.name);
+    if (w.active) {
+      const t = document.createElement("span");
+      t.className = "ws-tag on";
+      t.textContent = "active";
+      nameRow.append(t);
+    }
+    if (w.missing) {
+      const t = document.createElement("span");
+      t.className = "ws-tag warn";
+      t.textContent = "folder missing";
+      nameRow.append(t);
+    }
+    const path = document.createElement("div");
+    path.className = "ws-item-path";
+    path.textContent = w.path;
+    path.title = w.path;
+    const meta = document.createElement("div");
+    meta.className = "ws-item-meta";
+    const sens = w.allowSensitive === null || w.allowSensitive === undefined
+      ? "sensitive: default"
+      : (w.allowSensitive ? "sensitive: allowed" : "sensitive: blocked");
+    const max = w.maxFileBytes > 0 ? "max " + formatBytes(w.maxFileBytes) : "max: default";
+    meta.textContent = sens + " · " + max;
+    main.append(nameRow, path, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "ws-item-actions";
+    const open = document.createElement("button");
+    open.className = "primary";
+    open.textContent = w.active ? "active" : "open";
+    open.disabled = w.active || w.missing || wsState.busy;
+    open.addEventListener("click", () => switchWorkspace(w.name));
+    const edit = document.createElement("button");
+    edit.className = "ghost";
+    edit.textContent = "edit";
+    edit.addEventListener("click", () => editWorkspace(w));
+    const del = document.createElement("button");
+    del.className = "ghost danger";
+    del.textContent = "✕";
+    del.title = "Remove from the list (the folder is not touched)";
+    del.addEventListener("click", () => deleteWorkspace(w.name));
+    actions.append(open, edit, del);
+
+    li.append(main, actions);
+    list.append(li);
+  }
+
+  const warn = $("wsProcWarn");
+  if (d.runningProcesses && d.runningProcesses.length) {
+    warn.textContent = "Running background processes (" + d.runningProcesses.join(", ") +
+      ") belong to the current workspace and will be stopped when you switch.";
+    warn.classList.remove("hidden");
+  } else {
+    warn.classList.add("hidden");
+  }
+
+  $("wsDefaults").textContent = "Defaults: " + wsSensitiveLabel(d.defaults.allowSensitive) +
+    ", max " + formatBytes(d.defaults.maxFileBytes) + " per file. Empty settings inherit these.";
+}
+
+function resetWorkspaceForm() {
+  $("wsOriginal").value = "";
+  $("wsFormTitle").textContent = "Add workspace";
+  $("wsFormName").value = "";
+  $("wsFormPath").value = "";
+  $("wsFormSensitive").value = "";
+  $("wsFormMaxMB").value = "";
+  $("btnWsCancelEdit").classList.add("hidden");
+}
+
+function editWorkspace(w) {
+  $("wsOriginal").value = w.name;
+  $("wsFormTitle").textContent = "Edit “" + w.name + "”";
+  $("wsFormName").value = w.name;
+  $("wsFormPath").value = w.path;
+  $("wsFormSensitive").value = w.allowSensitive === null || w.allowSensitive === undefined
+    ? "" : (w.allowSensitive ? "allow" : "block");
+  $("wsFormMaxMB").value = w.maxFileBytes > 0 ? String(+(w.maxFileBytes / 1048576).toFixed(2)) : "";
+  $("btnWsCancelEdit").classList.remove("hidden");
+  $("wsFormName").focus();
+}
+
+async function openWorkspacesModal() {
+  resetWorkspaceForm();
+  $("workspacesModal").showModal();
+  try {
+    await loadWorkspaces();
+    renderWorkspaces();
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+}
+
+async function saveWorkspace(ev) {
+  ev.preventDefault();
+  const original = $("wsOriginal").value;
+  const sens = $("wsFormSensitive").value;
+  const mb = parseFloat($("wsFormMaxMB").value);
+  const body = {
+    name: $("wsFormName").value.trim(),
+    path: $("wsFormPath").value.trim(),
+    allowSensitive: sens === "" ? null : sens === "allow",
+    maxFileBytes: mb > 0 ? Math.round(mb * 1048576) : 0,
+  };
+  if (body.allowSensitive === true && !confirm("Allow .env files and private keys in this workspace? The AI will be able to read them.")) {
+    return;
+  }
+  try {
+    const path = original ? "/workspaces/" + encodeURIComponent(original) : "/workspaces";
+    wsState.data = await api(path, { method: original ? "PUT" : "POST", body });
+    renderWorkspaceButton();
+    renderWorkspaces();
+    resetWorkspaceForm();
+    setStatus(original ? "workspace updated" : "workspace saved");
+  } catch (err) {
+    setStatus(err.message, true);
+    alert(err.message);
+  }
+}
+
+async function deleteWorkspace(name) {
+  if (!confirm("Remove “" + name + "” from the list? The folder itself is not deleted.")) return;
+  try {
+    wsState.data = await api("/workspaces/" + encodeURIComponent(name), { method: "DELETE" });
+    renderWorkspaceButton();
+    renderWorkspaces();
+    if ($("wsOriginal").value === name) resetWorkspaceForm();
+    setStatus("workspace removed from the list");
+  } catch (err) {
+    setStatus(err.message, true);
+  }
+}
+
+async function switchWorkspace(name) {
+  if (wsState.busy) return;
+  if (state.dirty && !confirm("You have unsaved changes in " + state.currentPath + ". Discard them and switch?")) return;
+  wsState.busy = true;
+  renderWorkspaces();
+  setStatus("switching to " + name + "…");
+  try {
+    let res;
+    try {
+      res = await api("/workspaces/" + encodeURIComponent(name) + "/activate", { method: "POST", body: { stopProcesses: false } });
+    } catch (err) {
+      const running = err.status === 409 && err.data && err.data.runningProcesses;
+      if (!running) throw err;
+      if (!confirm("These background processes are still running: " + running.join(", ") +
+        "\n\nStop them and switch to “" + name + "”?")) {
+        setStatus("switch cancelled");
+        return;
+      }
+      res = await api("/workspaces/" + encodeURIComponent(name) + "/activate", { method: "POST", body: { stopProcesses: true } });
+    }
+    // The old workspace's file is gone from view.
+    state.currentPath = null;
+    state.dirty = false;
+    state.activeNode = null;
+    editor.value = "";
+    syntaxBanner.classList.add("hidden");
+    searchResults.classList.add("hidden");
+    searchResults.innerHTML = "";
+    $("uploadDir").value = "";
+    if (procLogs.name) closeProcLogs();
+    updateUI();
+    await loadWorkspaces();
+    renderWorkspaces();
+    await loadTree();
+    if (!$("procPanel").classList.contains("hidden")) await loadProcesses();
+    const stopped = res.stoppedProcesses && res.stoppedProcesses.length
+      ? " (stopped: " + res.stoppedProcesses.join(", ") + ")" : "";
+    setStatus("workspace: " + res.name + stopped);
+    $("workspacesModal").close();
+  } catch (err) {
+    setStatus(err.message, true);
+    alert(err.message);
+  } finally {
+    wsState.busy = false;
+    renderWorkspaces();
+  }
+}
+
 // --- Wiring ---------------------------------------------------------------
+
+$("btnSidebar").addEventListener("click", toggleSidebar);
+document.addEventListener("keydown", (ev) => {
+  if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "b") {
+    ev.preventDefault();
+    toggleSidebar();
+  }
+});
+
+$("btnWorkspaces").addEventListener("click", openWorkspacesModal);
+$("btnCloseWorkspaces").addEventListener("click", () => $("workspacesModal").close());
+$("wsForm").addEventListener("submit", saveWorkspace);
+$("btnWsCancelEdit").addEventListener("click", resetWorkspaceForm);
+$("btnWsUseCurrent").addEventListener("click", () => {
+  if (!wsState.data) return;
+  $("wsFormPath").value = wsState.data.activeRoot;
+  if (!$("wsFormName").value) {
+    const parts = wsState.data.activeRoot.split("/").filter(Boolean);
+    $("wsFormName").value = parts[parts.length - 1] || "";
+  }
+});
 
 editor.addEventListener("input", markDirty);
 editor.addEventListener("click", updateCursor);
@@ -935,6 +1216,10 @@ window.addEventListener("beforeunload", (ev) => {
     $("rootPath").textContent = info.root;
     $("rootPath").title = info.root;
     if (info.uploadMaxBytes > 0) upload.maxBytes = info.uploadMaxBytes;
+    if (info.workspacesEnabled) {
+      $("btnWorkspaces").classList.remove("hidden");
+      await loadWorkspaces().catch((err) => setStatus(err.message, true));
+    }
     if (info.processesEnabled) {
       $("procPanel").classList.remove("hidden");
       await loadProcesses();

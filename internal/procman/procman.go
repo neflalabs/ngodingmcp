@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"ngodingmcp/internal/runner"
@@ -129,7 +130,7 @@ type LogsResult struct {
 
 // Manager supervises background processes for one workspace.
 type Manager struct {
-	root         string
+	root         atomic.Value // string; swapped by SwitchRoot
 	run          *runner.Runner
 	maxProcesses int
 
@@ -150,12 +151,39 @@ func New(opts Options) (*Manager, error) {
 	if maxProcs <= 0 {
 		maxProcs = DefaultMaxProcesses
 	}
-	return &Manager{
-		root:         opts.Root,
+	m := &Manager{
 		run:          opts.Runner,
 		maxProcesses: maxProcs,
 		procs:        make(map[string]*Process),
-	}, nil
+	}
+	m.root.Store(opts.Root)
+	return m, nil
+}
+
+// Root returns the workspace root new processes start in.
+func (m *Manager) Root() string {
+	s, _ := m.root.Load().(string)
+	return s
+}
+
+// SwitchRoot is used when the active workspace changes. It stops every
+// running process (they belong to the old workspace), forgets all processes
+// with their logs, and makes later starts use root. It returns the names of
+// the processes that were still running. A process that does not stop within
+// ctx is left in the list so it stays visible.
+func (m *Manager) SwitchRoot(ctx context.Context, root string, grace time.Duration) []string {
+	var stopped []string
+	for _, info := range m.List() {
+		if info.Running {
+			stopped = append(stopped, info.Name)
+		}
+	}
+	m.StopAll(ctx, grace)
+	for _, info := range m.List() {
+		m.remove(info.Name) // remove keeps processes that still run
+	}
+	m.root.Store(root)
+	return stopped
 }
 
 // Start launches a process with only a name and argv.
@@ -392,7 +420,7 @@ func (m *Manager) Restart(name string, grace time.Duration) (Info, error) {
 	}
 	m.remove(name)
 	rel := ""
-	if root, err := filepath.EvalSymlinks(m.root); err == nil {
+	if root, err := filepath.EvalSymlinks(m.Root()); err == nil {
 		if r, err := filepath.Rel(root, dir); err == nil && r != "." {
 			rel = r
 		}
@@ -530,7 +558,7 @@ func (m *Manager) evictLocked() bool {
 
 // resolveDir validates that rel stays inside the workspace root.
 func (m *Manager) resolveDir(rel string) (string, error) {
-	root, err := filepath.EvalSymlinks(m.root)
+	root, err := filepath.EvalSymlinks(m.Root())
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidDir, err)
 	}

@@ -30,6 +30,8 @@ type UI struct {
 	auth    *auth.Authenticator
 	version string
 	procs   *procman.Manager
+	// workspaces drives the workspace selector; nil hides it.
+	workspaces Workspaces
 
 	// uploadMax caps each uploaded file; logger receives upload activity.
 	uploadMax int64
@@ -117,8 +119,17 @@ func (u *UI) serveFile(w http.ResponseWriter, name string) {
 	_, _ = w.Write(data)
 }
 
-// API returns the REST handler mounted at /api/.
+// API returns the REST handler mounted at /api/. Every endpoint except the
+// workspace selector holds the workspace while it runs, so a switch never
+// happens in the middle of a file request.
 func (u *UI) API() http.Handler {
+	top := http.NewServeMux()
+	u.addWorkspaceRoutes(top)
+	top.Handle("/", u.holdWorkspace(u.filesAPI()))
+	return top
+}
+
+func (u *UI) filesAPI() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /info", u.handleInfo)
 	mux.HandleFunc("GET /tree", u.handleTree)
@@ -185,20 +196,22 @@ func (u *UI) handleSearchReplace(w http.ResponseWriter, r *http.Request) {
 }
 
 type infoResponse struct {
-	Root      string `json:"root"`
-	Version   string `json:"version"`
-	MaxRead   int64  `json:"maxReadBytes"`
-	Processes bool   `json:"processesEnabled"`
-	UploadMax int64  `json:"uploadMaxBytes"`
+	Root       string `json:"root"`
+	Version    string `json:"version"`
+	MaxRead    int64  `json:"maxReadBytes"`
+	Processes  bool   `json:"processesEnabled"`
+	UploadMax  int64  `json:"uploadMaxBytes"`
+	Workspaces bool   `json:"workspacesEnabled"`
 }
 
 func (u *UI) handleInfo(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, infoResponse{
-		Root:      u.ws.Root(),
-		Version:   u.version,
-		MaxRead:   u.ws.MaxRead(),
-		Processes: u.procs != nil,
-		UploadMax: u.uploadLimit(),
+		Root:       u.ws.Root(),
+		Version:    u.version,
+		MaxRead:    u.ws.MaxRead(),
+		Processes:  u.procs != nil,
+		UploadMax:  u.uploadLimit(),
+		Workspaces: u.workspaces != nil,
 	})
 }
 

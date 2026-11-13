@@ -22,6 +22,8 @@ type Config struct {
 	// AllowDownload enables the opt-in download_file tool. False (off) when
 	// missing from older config files.
 	AllowDownload bool `json:"allowDownload,omitempty"`
+	// Workspaces are the saved workspaces listed in the Web UI selector.
+	Workspaces []SavedWorkspace `json:"workspaces,omitempty"`
 }
 
 // RunConfig is the persisted run_command switch. The allowed commands are

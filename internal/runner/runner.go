@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -55,7 +56,7 @@ type Result struct {
 
 // Runner executes allowlisted commands without a shell.
 type Runner struct {
-	root         string
+	root         atomic.Value // string; swapped by SetRoot on a workspace switch
 	prefix       [][]string
 	prefixLabels []string
 	exact        [][]string
@@ -87,16 +88,28 @@ func New(opts Options) (*Runner, error) {
 		return nil, errors.New("runner: allowlist is empty (add at least one prefix or exact command)")
 	}
 
-	return &Runner{
-		root:         opts.Root,
+	r := &Runner{
 		prefix:       prefix,
 		prefixLabels: prefixLabels,
 		exact:        exact,
 		exactLabels:  exactLabels,
 		timeout:      timeout,
 		maxOutput:    maxOutput,
-	}, nil
+	}
+	r.root.Store(opts.Root)
+	return r, nil
 }
+
+// Root returns the working directory used for every command.
+func (r *Runner) Root() string {
+	s, _ := r.root.Load().(string)
+	return s
+}
+
+// SetRoot changes the working directory for commands started afterwards. It
+// is used when the active workspace is switched; running commands keep the
+// directory they were started in.
+func (r *Runner) SetRoot(root string) { r.root.Store(root) }
 
 func parseEntries(entries []string, kind string) ([][]string, []string, error) {
 	var tokens [][]string
@@ -150,7 +163,7 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 
 	start := time.Now()
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
-	cmd.Dir = r.root
+	cmd.Dir = r.Root()
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	// Ensure cancellation (timeout) also terminates child processes spawned by
 	// the command, e.g. the workers started by package managers.

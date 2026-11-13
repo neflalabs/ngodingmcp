@@ -140,6 +140,13 @@ func New(cfg Config) (*Server, error) {
 		}
 	}
 	ui.SetProcesses(procMgr)
+	ui.SetWorkspaces(&workspaceManager{
+		ws:       ws,
+		runner:   cmdRunner,
+		procs:    procMgr,
+		defaults: webui.WorkspaceDefaults{AllowSensitive: cfg.AllowSensitive, MaxFileBytes: ws.MaxRead()},
+		logger:   logger,
+	})
 
 	var downloader *fetch.Client
 	if cfg.AllowDownload {
@@ -203,7 +210,7 @@ func (s *Server) RunEnabled() bool { return s.procs != nil }
 func (s *Server) DownloadEnabled() bool { return s.download }
 
 // SensitiveGuard reports whether the sensitive-file guard is active.
-func (s *Server) SensitiveGuard() bool { return !s.cfg.AllowSensitive }
+func (s *Server) SensitiveGuard() bool { return !s.ws.AllowSensitive() }
 
 // Start binds the listen address and serves in the background.
 func (s *Server) Start() error {

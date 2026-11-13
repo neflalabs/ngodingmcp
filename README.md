@@ -45,8 +45,10 @@ Browser (UI editor) ───────┘
   dev server dan proses long-running lain, lengkap dengan readiness check,
   cursor log, dan panel di TUI/web UI.
 - **Web UI** bawaan (embedded, tanpa dependency frontend): file tree, editor,
-  search, buat/rename/hapus file, save via `Ctrl+S`, light/dark mode, dan
-  viewer log proses dengan tombol stop/restart
+  search, buat/rename/hapus file, save via `Ctrl+S`, light/dark mode,
+  viewer log proses dengan tombol stop/restart, **workspace selector** (simpan
+  beberapa folder proyek dan pindah tanpa restart), dan sidebar yang bisa
+  di-collapse (`Ctrl+B`)
 - **TUI control panel**: atur root/address/token, toggle run & file sensitif,
   start/stop, lihat log live plus aktivitas tool AI per baris
 - **Sandbox**: semua path relatif ke root, `..` dan symlink keluar root ditolak
@@ -201,6 +203,40 @@ boleh banyak; maks. 20 file per request), wajib login/token. Aturannya sama deng
 (`--upload-max-bytes`), write atomik, nama file harus nama polos (tanpa `/`, `\`,
 `..`). File yang sudah ada dibalas `409` kecuali `overwrite=true`; terlalu besar
 `413`; path sensitif/di luar root `403`. Respons memuat hasil per file.
+
+### Workspace selector (web UI)
+
+Tombol **workspace ▾** di topbar membuka daftar workspace tersimpan. Tambah
+workspace dengan nama + folder absolut (harus sudah ada; `~/` boleh), lalu klik
+**open** untuk pindah. Tombol *use current folder* mengisi form dengan root yang
+sedang aktif. Daftar ini disimpan di config yang sama dengan TUI
+(`~/.config/ngodingmcp/config.json`, field `workspaces`), dan workspace terakhir
+yang dibuka jadi root default di start berikutnya.
+
+Setiap workspace boleh punya setelan sendiri; yang dikosongkan ikut default
+global saat server dinyalakan:
+
+- **Sensitive files**: `inherit` / `block` / `allow` (override `--allow-sensitive`).
+- **Max file size**: batas baca/tulis per file (override `--max-file-bytes`).
+
+Yang terjadi saat pindah workspace:
+
+- Server menunggu tool call MCP dan request web UI yang sedang jalan selesai
+  (maks. 15 detik, kalau lewat dibalas `409` "busy"), jadi satu operasi tidak
+  pernah tercampur dua root.
+- Background process milik workspace lama tidak dibiarkan jalan diam-diam: kalau
+  ada, web UI minta konfirmasi dulu, lalu semuanya di-stop dan log-nya dibuang.
+- `run_command` dan process tools ikut pindah ke root baru. Sandbox path dan
+  guard file sensitif berlaku untuk workspace yang aktif.
+- MCP client tidak perlu reconnect: daftar tool tidak berubah, hanya root-nya.
+
+Folder workspace yang aktif tidak bisa diganti lewat *edit* (pindah dulu ke
+workspace lain); setelan lain langsung berlaku. Hapus dari daftar tidak menyentuh
+foldernya. Endpoint (wajib login/token): `GET /api/workspaces`,
+`POST /api/workspaces`, `PUT /api/workspaces/{name}`,
+`DELETE /api/workspaces/{name}`, `POST /api/workspaces/{name}/activate`
+(body opsional `{"stopProcesses": true}`; tanpa itu, proses yang masih jalan
+membuat switch dibalas `409` dengan `runningProcesses`).
 
 ### Eksekusi command (opt-in)
 
@@ -418,7 +454,7 @@ ngodingmcp/
 │   │   ├── tools_process.go    #   background process tools (opt-in)
 │   │   ├── tools_download.go   #   download_file (opt-in)
 │   │   └── testdata/tools.golden.json  # kontrak semua tool (TestToolContract)
-│   └── webui/                  # REST API (termasuk /api/upload) + embedded UI
+│   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
 │       └── web/                # index.html, login.html, app.js, style.css
 └── internal/*/*_test.go        # config, gitwrite, mcpserver, procman, tui, workspace
 ```

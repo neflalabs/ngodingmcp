@@ -9,7 +9,13 @@
 </head>
 <body>
 <header class="topbar">
+  <button id="btnSidebar" class="ghost sidebar-toggle" type="button" title="Collapse sidebar (Ctrl+B)" aria-controls="sidebar" aria-expanded="true">☰</button>
   <div class="brand">Ngoding<span>MCP</span></div>
+  <button id="btnWorkspaces" class="ghost ws-switch hidden" type="button" title="Switch workspace">
+    <span class="ws-label">workspace</span>
+    <span id="wsName" class="ws-name">…</span>
+    <span class="ws-caret">▾</span>
+  </button>
   <div class="root" id="rootPath" title="workspace root">…</div>
   <div class="top-actions">
     <button id="btnStats" class="ghost" title="Workspace Stats">📊 Stats</button>
@@ -20,8 +26,8 @@
   </div>
 </header>
 
-<main class="layout">
-  <aside class="sidebar">
+<main class="layout" id="layout">
+  <aside class="sidebar" id="sidebar">
     <div class="toolbar">
       <button id="btnNewFile" title="New file">+ file</button>
       <button id="btnNewFolder" title="New folder">+ dir</button>
@@ -151,6 +157,54 @@
         <button id="btnUploadSend" class="primary" disabled>Upload</button>
       </div>
       <div id="uploadResults" class="sr-results hidden"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- Workspaces Modal -->
+<dialog id="workspacesModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Workspaces</h3>
+      <button class="ghost close-modal" id="btnCloseWorkspaces">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="ws-active" id="wsActive"></div>
+      <ul id="wsList" class="ws-list"></ul>
+      <div id="wsProcWarn" class="ws-warn hidden"></div>
+
+      <form id="wsForm" class="ws-form" autocomplete="off">
+        <h4 id="wsFormTitle">Add workspace</h4>
+        <input type="hidden" id="wsOriginal">
+        <div class="form-group">
+          <label for="wsFormName">Name</label>
+          <input id="wsFormName" placeholder="e.g. website-sekolah" maxlength="48" required>
+        </div>
+        <div class="form-group">
+          <label for="wsFormPath">Folder (absolute path, must already exist)</label>
+          <input id="wsFormPath" placeholder="/home/you/projects/app or ~/projects/app" required>
+        </div>
+        <div class="ws-form-row">
+          <div class="form-group">
+            <label for="wsFormSensitive">Sensitive files (.env, keys)</label>
+            <select id="wsFormSensitive">
+              <option value="">inherit default</option>
+              <option value="block">block</option>
+              <option value="allow">allow</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="wsFormMaxMB">Max file size (MB)</label>
+            <input id="wsFormMaxMB" type="number" min="0" step="0.5" placeholder="inherit default">
+          </div>
+        </div>
+        <div class="upload-hint" id="wsDefaults"></div>
+        <div class="modal-actions">
+          <button type="button" id="btnWsUseCurrent" class="ghost">use current folder</button>
+          <button type="button" id="btnWsCancelEdit" class="ghost hidden">cancel edit</button>
+          <button type="submit" id="btnWsSave" class="primary">Save</button>
+        </div>
+      </form>
     </div>
   </div>
 </dialog>

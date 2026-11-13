@@ -81,8 +81,10 @@ func NewWithOptions(ws *workspace.Workspace, version string, opts Options) *mcp.
 	}
 
 	// Middleware: scrub host absolute paths from every failed tool result,
+	// hold the workspace for the whole call (a Web UI switch waits for it),
 	// then (optionally) log one activity line per call.
 	s.AddReceivingMiddleware(safeErrorMiddleware(ws))
+	s.AddReceivingMiddleware(holdWorkspaceMiddleware(ws))
 	if opts.Logger != nil {
 		s.AddReceivingMiddleware(activityMiddleware(opts.Logger))
 	}

@@ -101,15 +101,20 @@ func SensitivePatterns() []string {
 }
 
 // SetAllowSensitive disables (true) or enables (false) sensitive-path
-// blocking. Blocking is on by default.
-func (w *Workspace) SetAllowSensitive(allow bool) { w.allowSensitive = allow }
+// blocking. Blocking is on by default. It is meant for setup before the
+// workspace is used; later changes go through Switch.
+func (w *Workspace) SetAllowSensitive(allow bool) {
+	next := *w.st.Load()
+	next.allowSensitive = allow
+	w.st.Store(&next)
+}
 
 // AllowSensitive reports whether sensitive paths are accessible.
-func (w *Workspace) AllowSensitive() bool { return w.allowSensitive }
+func (w *Workspace) AllowSensitive() bool { return w.st.Load().allowSensitive }
 
 // blocked reports whether the absolute path full must be hidden.
 func (w *Workspace) blocked(full string) bool {
-	return !w.allowSensitive && IsSensitive(w.relPath(full))
+	return !w.AllowSensitive() && IsSensitive(w.relPath(full))
 }
 
 // safeError keeps the original error for errors.Is/As but hides host paths.
@@ -129,7 +134,7 @@ func (w *Workspace) SafeError(err error) error {
 		return nil
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, w.root) {
+	if !strings.Contains(msg, w.Root()) {
 		return err
 	}
 	return &safeError{msg: w.ScrubPaths(msg), err: err}
@@ -138,9 +143,9 @@ func (w *Workspace) SafeError(err error) error {
 // ScrubPaths replaces the absolute workspace root in s with workspace-relative
 // paths ("<root>/a/b" becomes "a/b", a bare "<root>" becomes ".").
 func (w *Workspace) ScrubPaths(s string) string {
-	if w.root == "" || !strings.Contains(s, w.root) {
+	if w.Root() == "" || !strings.Contains(s, w.Root()) {
 		return s
 	}
-	s = strings.ReplaceAll(s, w.root+string(filepath.Separator), "")
-	return strings.ReplaceAll(s, w.root, ".")
+	s = strings.ReplaceAll(s, w.Root()+string(filepath.Separator), "")
+	return strings.ReplaceAll(s, w.Root(), ".")
 }
