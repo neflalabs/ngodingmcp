@@ -1,0 +1,74 @@
+# Konfigurasi
+
+## Subcommand
+
+| Command | Fungsi |
+|---|---|
+| `ngodingmcp` | Server; di terminal interaktif membuka TUI |
+| `ngodingmcp serve [flags]` | Start server HTTP di foreground tanpa TUI (yang dijalankan service) |
+| `ngodingmcp tui [flags]` | Buka control panel (`--root`, `--addr`, `--token` sebagai preset) |
+| `ngodingmcp -d` | Pasang/perbarui systemd user service lalu start (alias `--daemon`) |
+| `ngodingmcp status` / `logs` / `restart` / `stop` | Kelola service, lihat [service.md](service.md) |
+| `ngodingmcp version` | Cetak versi, commit, dan waktu build (juga `-v`, `--version`) |
+| `ngodingmcp help` | Tampilkan bantuan (juga `-h`, `--help`) |
+
+Flag lama tetap kompatibel: `ngodingmcp --addr ... --root ...` masih menjalankan
+server. Subcommand yang tidak dikenal ditolak dengan pesan error.
+
+Contoh:
+
+```sh
+./ngodingmcp serve \
+  --addr 127.0.0.1:8080 \
+  --root /path/ke/workspace \
+  --token rahasia-panjang
+```
+
+- Kalau `--token` kosong, server membuat token acak dan mencetaknya ke stderr.
+- `--root` dibuat otomatis kalau belum ada.
+
+## Precedence
+
+`serve` membaca config TUI lebih dulu, lalu environment menimpa config, dan flag
+menimpa keduanya: **flag > environment > config.json**.
+
+## Flag dan environment
+
+| Flag | Env | Default |
+|---|---|---|
+| `--addr` | `NGODINGMCP_ADDR` | `127.0.0.1:8080` |
+| `--root` | `NGODINGMCP_ROOT` | `~/ngodingmcp-workspace` |
+| `--token` | `NGODINGMCP_TOKEN` | dibuat acak |
+| `--max-file-bytes` | – | `2097152` (2 MiB) |
+| `--allow-run` | `NGODINGMCP_ALLOW_RUN` | `false` |
+| `--run-allow` | `NGODINGMCP_RUN_ALLOWLIST` | kosong (pakai predefined) |
+| `--run-allow-exact` | `NGODINGMCP_RUN_ALLOWLIST_EXACT` | kosong (pakai predefined) |
+| `--run-timeout` | `NGODINGMCP_RUN_TIMEOUT` | `1m` |
+| `--allow-sensitive` | `NGODINGMCP_ALLOW_SENSITIVE` | `false` (file sensitif diblokir) |
+| `--allow-download` | `NGODINGMCP_ALLOW_DOWNLOAD` | `false` |
+| `--download-allow-host` | `NGODINGMCP_DOWNLOAD_ALLOW_HOSTS` | kosong (semua host publik) |
+| `--download-max-bytes` | `NGODINGMCP_DOWNLOAD_MAX_BYTES` | `20971520` (20 MiB) |
+| `--upload-max-bytes` | `NGODINGMCP_UPLOAD_MAX_BYTES` | `20971520` (20 MiB per file) |
+
+Penjelasan run/allowlist: [run-and-processes.md](run-and-processes.md).
+Penjelasan download: [tools.md](tools.md#download_file).
+
+## `config.json`
+
+Lokasi: `~/.config/ngodingmcp/config.json`.
+
+- Menyimpan setting TUI (root, address, token, toggle) dan daftar workspace dari
+  Web UI (field `workspaces`). Workspace terakhir yang dibuka di Web UI jadi root
+  default di start berikutnya.
+- Dipakai lagi pada run berikutnya, termasuk `ngodingmcp serve` tanpa flag.
+- Untuk run policy, config hanya menyimpan flag enable (`{"run": {"enabled": true}}`);
+  allowlist tidak bisa diubah dari sini.
+- Berada **di luar workspace** agar agent tidak bisa mengubahnya.
+- Karena menyimpan token dalam plaintext, file-nya ditulis dengan permission
+  `0600` dan foldernya `0700`; config lama yang lebih longgar ikut diperketat saat
+  disimpan.
+
+## File env service
+
+`~/.config/ngodingmcp/env` dibaca oleh systemd user service (format `KEY=value`,
+memakai env var di tabel atas). Lihat [service.md](service.md).

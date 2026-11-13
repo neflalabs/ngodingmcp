@@ -1,498 +1,84 @@
 # NgodingMCP
 
-MCP server berbasis Go yang memperlakukan sebuah folder sebagai *workspace* teks
-yang bisa dikontrol AI lewat tools, sekaligus bisa diedit manusia lewat UI web.
-Transport-nya HTTP (MCP Streamable HTTP), dengan autentikasi token.
+MCP server berbasis Go yang menjadikan sebuah folder *workspace* yang bisa
+dikontrol AI lewat tools, sekaligus bisa diedit manusia lewat Web UI.
+Transport-nya HTTP (MCP Streamable HTTP) dengan autentikasi token.
 
 ```
 AI client ──HTTP/JSON-RPC──┐
                            ├──► ngodingmcp ──► workspace/ (file di disk)
-Browser (UI editor) ───────┘
+Browser (Web UI) ──────────┘
 ```
 
 ## Fitur
 
-- **26 MCP tools**: `read_file`, `write_file`, `replace_text`, `edit_file`, `replace_lines`,
-  `insert_text`, `delete_lines`, `list_files`, `search_text`, `search_and_replace`, `file_info`,
-  `workspace_stats`, `validate_syntax`, `count_tokens`, `mkdir_path`, `move_path`, `delete_path`,
-  `git_status`, `git_diff`, `git_log`, `git_init`, `git_add`, `git_unstage`, `git_commit`,
-  `git_create_branch`, `git_switch_branch`
-- **`edit_file`**: beberapa edit exact-text dalam satu langkah atomik (semua berhasil
-  atau tidak ada yang ditulis), plus unified diff. `dry_run: true` untuk preview saja.
-- **Git read-only**: `git_status`, `git_diff` (opsi `path`, `staged`, `stat`, `ref`),
-  `git_log` (opsi `path`, `limit`). Bila workspace bukan repo git, tool membalas
-  pesan penjelasan (arahkan ke `git_init`), bukan error.
-- **Git write (modul inti, selalu aktif)**: `git_init` (branch awal `main`),
-  `git_add` (`paths` atau `all: true`; file ignored tidak pernah di-stage, file
-  sensitif seperti `.env`/private key dilewati dan dilaporkan), `git_unstage`
-  (file di workspace tidak berubah), `git_commit` (`message`, opsional
-  `author_name` + `author_email`), `git_create_branch` (opsi `start`, `switch`),
-  `git_switch_branch`. Batas aman: **tidak ada** push, pull, fetch, merge,
-  rebase, reset --hard, clean, checkout file, hapus branch, amend, atau force.
-  Hook repo (`core.hooksPath`, husky) dan GPG signing tidak pernah dijalankan.
-  Commit ditolak bila ada file sensitif yang ter-stage. Hanya bekerja bila root
-  workspace = root repo (workspace di dalam repo lain ditolak, kecuali `git_init`).
-- **`validate_syntax`**: parse penuh untuk Go dan JSON; cek delimiter (kurung
-  seimbang, string/template literal/regex/komentar tertutup) untuk JS/TS/CSS.
-  Hasil memuat field `check`: `parser`, `delimiters`, atau `none`.
-- **`run_command` (opt-in)**: eksekusi command dari allowlist tanpa shell, dengan
-  timeout dan batas output. Tidak aktif kecuali `--allow-run` diberikan.
-- **`download_file` (opt-in)**: unduh file teks/biner (mis. gambar WebP) dari URL
-  https ke workspace. Tidak aktif kecuali `--allow-download` atau toggle di TUI.
-- **Upload lewat web UI**: drag-and-drop atau pilih file, tentukan folder tujuan.
-- **Background processes (opt-in)**: `start_process`, `list_processes`,
-  `process_logs`, `stop_process`, `restart_process`, `stop_all_processes` untuk
-  dev server dan proses long-running lain, lengkap dengan readiness check,
-  cursor log, dan panel di TUI/web UI.
-- **Web UI** bawaan (embedded, tanpa dependency frontend): file tree, editor,
-  search, buat/rename/hapus file, save via `Ctrl+S`, light/dark mode,
-  viewer log proses dengan tombol stop/restart, **workspace selector** (simpan
-  beberapa folder proyek dan pindah tanpa restart), dan sidebar yang bisa
-  di-collapse (`Ctrl+B`)
-- **TUI control panel**: atur root/address/token, toggle run & file sensitif,
-  start/stop, lihat log live plus aktivitas tool AI per baris
-- **Sandbox**: semua path relatif ke root, `..` dan symlink keluar root ditolak
-- **Write atomik**: tulis ke temp file lalu `rename`
-- **Batas ukuran baca** dan deteksi file biner
-- **Auth token** untuk MCP/REST (`Authorization: Bearer` / `X-API-Key`) dan
-  login cookie untuk browser
+- **32 tool inti** yang selalu aktif: baca/tulis/list/pindah/hapus file, edit
+  presisi, search & replace, statistik workspace, `validate_syntax`, `count_tokens`.
+- **Edit atomik + diff**: `edit_file` menjalankan beberapa edit sekaligus (semua
+  berhasil atau tidak ada yang ditulis) dan mengembalikan unified diff.
+- **Git lokal + remote**: status/diff/log, init, add, unstage, commit, buat/pindah
+  branch, remote, fetch, pull (fast-forward saja), push (tanpa force), merge
+  (konflik di-abort otomatis), dan buat repo GitHub lewat `gh`. Tanpa rebase,
+  reset, atau hook.
+- **`run_command` + background process** (opt-in, `--allow-run`): command dari
+  allowlist tanpa shell, plus dev server yang tetap hidup (`bun run dev`).
+- **Download & upload**: `download_file` dari URL https (opt-in,
+  `--allow-download`), upload drag-and-drop lewat Web UI.
+- **Web UI**: file tree, editor, search, log proses, light/dark mode,
+  workspace selector (pindah proyek tanpa restart).
+- **TUI control panel** untuk start/stop server dan melihat aktivitas tool AI.
+- **systemd user service**: `./ngodingmcp -d` agar jalan di background tanpa root.
+- **Sandbox**: semua path dikunci di root workspace; file sensitif (`.env`,
+  private key, `.git`) diblokir secara default.
 
-## Cara tercepat: TUI
+Jumlah tool: 32 secara default, 39 dengan `--allow-run` (+ `run_command` dan 6
+tool proses), 40 kalau `--allow-download` juga aktif. Daftar lengkap ada di
+[docs/tools.md](docs/tools.md).
 
-Ada control panel interaktif, jadi kamu tidak perlu hafal flag:
+## Requirements
+
+- Go **1.26.10** atau lebih baru (lihat `go.mod`) untuk build.
+- `git` di `PATH` untuk tool git. `gh` (GitHub CLI, sudah `gh auth login`) untuk
+  `git_github_create_repo` dan cara termudah push lewat HTTPS. Langkah auth,
+  termasuk untuk mode `-d`, ada di [docs/tools.md](docs/tools.md#auth-untuk-remote).
+- Linux dengan systemd untuk mode background (`-d`). Mode TUI dan `serve`
+  tidak butuh systemd.
+
+## Quick start
+
+Build:
 
 ```sh
-cd ngodingmcp
-go build -o ngodingmcp .
+go build -o ngodingmcp .    # atau: make build (binary statis)
+```
+
+Jalankan TUI (control panel interaktif):
+
+```sh
 ./ngodingmcp
 ```
 
-Tanpa argumen di terminal, `ngodingmcp` langsung membuka TUI. Kamu juga bisa
-memanggilnya eksplisit dengan `./ngodingmcp tui`.
+Isi workspace root, address, dan token (kosongkan agar dibuat otomatis), lalu
+tekan `Enter`. Buka `http://127.0.0.1:8080/` dan masukkan token untuk Web UI.
 
-Di dalam TUI:
-
-| Tombol | Fungsi |
-|---|---|
-| `Tab` / `Shift+Tab` | pindah field |
-| `Space` | ubah toggle yang sedang disorot (`run_command` + processes, atau file sensitif) |
-| `Enter` | start / stop server |
-| `Ctrl+R` | restart |
-| `Ctrl+O` | buka UI di browser |
-| `Ctrl+X` | hentikan semua background process |
-| `Ctrl+T` | tampilkan/sembunyikan token |
-| `Ctrl+L` | bersihkan log |
-| `Ctrl+Q` | keluar (server ikut dimatikan) |
-
-Isi *Workspace root*, *Listen address*, dan *Auth token* (kosongkan token
-agar dibuat otomatis). Toggle **Enable run_command & processes** dengan `Space`;
-daftar command yang diizinkan sudah di-predefine di kode (lihat bagian
-*Eksekusi command*). Tekan `Enter` untuk start, `Ctrl+R` untuk restart.
-
-Toggle **Allow sensitive files** (default mati) sama dengan flag
-`--allow-sensitive`: saat dinyalakan, TUI menampilkan peringatan merah karena AI
-bisa membaca/menulis `.env`, private key, dan isi `.git`.
-
-Saat server jalan, TUI menampilkan satu baris ringkasan, misalnya
-`tools: 27 active · run: on · sensitive guard: on`, dan setiap tool call dari AI
-muncul di log sebagai satu baris ringkas:
-
-```
-09:41:02 ▸ edit_file internal/app/app.go ✓ 4ms
-09:41:05 ▸ run_command go test ./... ✗ exit 1 3.2s
-```
-
-Yang dicatat hanya nama tool, target utama (path, command, atau nama proses),
-berhasil/gagal, dan durasi. Isi file, teks edit, env, token, dan pesan error
-tidak pernah ditulis ke log. Baris yang sama juga muncul di log `serve`.
-
-Semua setting disimpan di `~/.config/ngodingmcp/config.json` dan dipakai lagi
-pada run berikutnya — termasuk saat menjalankan `ngodingmcp serve` tanpa flag.
-Config ini hanya menyimpan flag enable; allowlist tidak bisa diubah dari sini.
-Config berada **di luar workspace** agar agent tidak bisa mengubahnya. Karena
-config menyimpan token dalam plaintext, file-nya ditulis dengan permission
-`0600` dan foldernya `0700`; config lama yang lebih longgar ikut diperketat
-saat disimpan.
-
-## Build & jalankan (CLI)
+Atau jalankan di background sebagai systemd user service:
 
 ```sh
-cd ngodingmcp
-go build -o ngodingmcp .
-
-./ngodingmcp serve \
-  --addr 127.0.0.1:8080 \
-  --root /path/ke/workspace \
-  --token rahasia-panjang
+./ngodingmcp -d          # pasang + start, cetak alamat Web UI dan MCP
+./ngodingmcp status      # nyala atau tidak, alamat, workspace
+./ngodingmcp logs        # ikuti log service
+./ngodingmcp restart     # setelah rebuild binary atau edit file env
+./ngodingmcp stop        # stop (tetap enabled untuk login berikutnya)
 ```
 
-Subcommand yang tersedia:
+Supaya service tetap jalan setelah logout: `loginctl enable-linger $USER` (sekali saja).
 
-| Command | Fungsi |
-|---|---|
-| `ngodingmcp` | Server; di terminal interaktif membuka TUI |
-| `ngodingmcp serve [flags]` | Start server HTTP secara eksplisit |
-| `ngodingmcp tui [flags]` | Buka control panel (`--root`, `--addr`, `--token` sebagai preset) |
-| `ngodingmcp version` | Cetak versi, commit, dan waktu build (juga `-v`, `--version`) |
-| `ngodingmcp help` | Tampilkan bantuan (juga `-h`, `--help`) |
+## Menyambungkan MCP client
 
-Flag lama tetap kompatibel: `ngodingmcp --addr ... --root ...` masih menjalankan
-server. Subcommand yang tidak dikenal akan ditolak dengan pesan error.
+- Endpoint: `http://127.0.0.1:8080/mcp`
+- Auth: `Authorization: Bearer <token>` atau `X-API-Key: <token>` (token yang sama).
 
-Jika `--token` kosong, server membuat token acak dan mencetaknya ke stderr.
-`--root` dibuat otomatis bila belum ada.
-
-Konfigurasi lewat environment juga bisa. `serve` membaca config TUI lebih dulu,
-lalu environment menimpa config, dan flag menimpa keduanya:
-
-| Flag | Env | Default |
-|---|---|---|
-| `--addr` | `NGODINGMCP_ADDR` | `127.0.0.1:8080` |
-| `--root` | `NGODINGMCP_ROOT` | `~/ngodingmcp-workspace` |
-| `--token` | `NGODINGMCP_TOKEN` | dibuat acak |
-| `--max-file-bytes` | – | `2097152` (2 MiB) |
-| `--allow-run` | `NGODINGMCP_ALLOW_RUN` | `false` |
-| `--run-allow` | `NGODINGMCP_RUN_ALLOWLIST` | kosong (pakai predefined) |
-| `--run-allow-exact` | `NGODINGMCP_RUN_ALLOWLIST_EXACT` | kosong (pakai predefined) |
-| `--run-timeout` | `NGODINGMCP_RUN_TIMEOUT` | `1m` |
-| `--allow-sensitive` | `NGODINGMCP_ALLOW_SENSITIVE` | `false` (file sensitif diblokir) |
-| `--allow-download` | `NGODINGMCP_ALLOW_DOWNLOAD` | `false` |
-| `--download-allow-host` | `NGODINGMCP_DOWNLOAD_ALLOW_HOSTS` | kosong (semua host publik) |
-| `--download-max-bytes` | `NGODINGMCP_DOWNLOAD_MAX_BYTES` | `20971520` (20 MiB) |
-| `--upload-max-bytes` | `NGODINGMCP_UPLOAD_MAX_BYTES` | `20971520` (20 MiB per file) |
-
-Buka `http://127.0.0.1:8080/`, masukkan token, lalu edit seperti editor biasa.
-
-### Versi build
-
-Format versi: `<CalVer>+<commit>[.dirty]`, misalnya:
-
-| Versi | Artinya |
-|---|---|
-| `v2026.11.12+4deb6fa` | build bersih dari commit `4deb6fa` |
-| `v2026.11.12+4deb6fa.dirty` | dibuild dengan perubahan yang belum di-commit |
-| `v2026.11.12+dev` | tanpa info git (`go run`, source di luar repo git) |
-
-- **CalVer** (`v2026.11.12`) diganti manual di `internal/buildinfo/buildinfo.go`,
-  pakai nomor yang sama dengan dokumen TaskDev.
-- **Commit** dan tanda `.dirty` diambil otomatis dari info VCS yang ditanam `go build`
-  di dalam repo git. Jadi `go build -o ngodingmcp .` biasa sudah cukup, tanpa flag apa pun.
-- **Waktu build** selalu ikut berubah tiap rebuild, walaupun commit-nya sama.
-  Build biasa memakai waktu file binary; `make build` menanam waktunya lewat `-ldflags`.
-
-Versi yang sama muncul di: header TUI (plus waktu build), status bar web UI
-(tooltip berisi waktu build), field `version`/`built` di `GET /api/info`,
-`serverInfo.version` di handshake MCP, banner stderr saat `serve`, dan
-`ngodingmcp version`:
-
-```
-$ ./ngodingmcp version
-ngodingmcp v2026.11.12+4deb6fa.dirty
-  commit:    4deb6fa (with uncommitted changes)
-  committed: 2026-11-13 17:20 WIT
-  built:     2026-11-13 17:45 WIT
-  go:        go1.26.x linux/amd64
-```
-
-Cara build:
-
-```sh
-go build -o ngodingmcp .              # dev: versi + commit otomatis
-make build                            # binary statis, waktu build ditanam
-make release VERSION=v2026.12.0       # cross-compile ke dist/, override CalVer
-make version                          # build lalu cetak versinya
-```
-
-Semua bagian bisa ditimpa saat link, misalnya untuk build di luar repo git:
-
-```sh
-go build -ldflags "-X ngodingmcp/internal/buildinfo.version=v2026.12.0 \
-  -X ngodingmcp/internal/buildinfo.commit=abc1234 \
-  -X ngodingmcp/internal/buildinfo.buildTime=2026-12-01T00:00:00Z" -o ngodingmcp .
-```
-
-### Download file dari URL (opt-in)
-
-`write_file` hanya menerima teks. Untuk file biner, aktifkan `download_file`
-(toggle **Enable download_file** di TUI, atau):
-
-```bash
-./ngodingmcp serve --allow-download
-# opsional: batasi host dan ukuran
-./ngodingmcp serve --allow-download --download-allow-host "*.example.com" --download-max-bytes 52428800
-```
-
-Argumen: `source_url` (wajib, https), `path` (wajib, relatif ke root),
-`overwrite` (default `false`), `sha256` (opsional, 64 hex). Hasil: `path`,
-`bytes`, `sha256`, `contentType` (hanya informasi dari server).
-
-Pengaman:
-
-- hanya `https://`, tanpa `user:pass@`; redirect maks. 5 dan tiap hop dicek ulang;
-- alamat loopback, privat, link-local (termasuk metadata cloud `169.254.169.254`),
-  CGNAT/Tailscale (`100.64.0.0/10`) dan range reserved ditolak **saat dial**, jadi
-  DNS rebinding dan redirect tidak bisa melewatinya; proxy dari environment diabaikan;
-- batas ukuran dihitung dari byte yang benar-benar dibaca, bukan `Content-Length`;
-  timeout total 2 menit;
-- path tujuan lewat sandbox dan guard file sensitif; ditulis atomik (temp file +
-  rename), tidak ada file setengah jadi bila gagal;
-- log aktivitas hanya mencatat host dan path tujuan, tidak pernah query string/token.
-
-Allowlist host kosong secara default karena host URL bertanda tangan (signed URL)
-dari MCP client tidak diketahui sebelumnya.
-
-### Upload lewat web UI
-
-Tombol **↑ upload** di sidebar membuka dialog: drop file atau klik *choose files*,
-isi folder tujuan (relatif ke root), centang *overwrite* bila perlu. Endpoint:
-`POST /api/upload?dir=<folder>&overwrite=true|false` (multipart, field `file`,
-boleh banyak; maks. 20 file per request), wajib login/token. Aturannya sama dengan
-`download_file`: sandbox path, guard file sensitif, batas ukuran per file
-(`--upload-max-bytes`), write atomik, nama file harus nama polos (tanpa `/`, `\`,
-`..`). File yang sudah ada dibalas `409` kecuali `overwrite=true`; terlalu besar
-`413`; path sensitif/di luar root `403`. Respons memuat hasil per file.
-
-### Workspace selector (web UI)
-
-Tombol **workspace ▾** di topbar membuka daftar workspace tersimpan. Tambah
-workspace dengan nama + folder absolut (harus sudah ada; `~/` boleh), lalu klik
-**open** untuk pindah. Tombol *use current folder* mengisi form dengan root yang
-sedang aktif. Daftar ini disimpan di config yang sama dengan TUI
-(`~/.config/ngodingmcp/config.json`, field `workspaces`), dan workspace terakhir
-yang dibuka jadi root default di start berikutnya.
-
-Setiap workspace boleh punya setelan sendiri; yang dikosongkan ikut default
-global saat server dinyalakan:
-
-- **Sensitive files**: `inherit` / `block` / `allow` (override `--allow-sensitive`).
-- **Max file size**: batas baca/tulis per file (override `--max-file-bytes`).
-
-Yang terjadi saat pindah workspace:
-
-- Server menunggu tool call MCP dan request web UI yang sedang jalan selesai
-  (maks. 15 detik, kalau lewat dibalas `409` "busy"), jadi satu operasi tidak
-  pernah tercampur dua root.
-- Background process milik workspace lama tidak dibiarkan jalan diam-diam: kalau
-  ada, web UI minta konfirmasi dulu, lalu semuanya di-stop dan log-nya dibuang.
-- `run_command` dan process tools ikut pindah ke root baru. Sandbox path dan
-  guard file sensitif berlaku untuk workspace yang aktif.
-- MCP client tidak perlu reconnect: daftar tool tidak berubah, hanya root-nya.
-
-Folder workspace yang aktif tidak bisa diganti lewat *edit* (pindah dulu ke
-workspace lain); setelan lain langsung berlaku. Hapus dari daftar tidak menyentuh
-foldernya. Endpoint (wajib login/token): `GET /api/workspaces`,
-`POST /api/workspaces`, `PUT /api/workspaces/{name}`,
-`DELETE /api/workspaces/{name}`, `POST /api/workspaces/{name}/activate`
-(body opsional `{"stopProcesses": true}`; tanpa itu, proses yang masih jalan
-membuat switch dibalas `409` dengan `runningProcesses`).
-
-## Jalan di background (systemd user service)
-
-Supaya NgodingMCP tetap jalan tanpa terminal terbuka, jadikan dia systemd user
-service. Tidak perlu `sudo`/root. Kontrolnya lewat web UI.
-
-```sh
-go build -o ngodingmcp .     # atau: make build
-./ngodingmcp -d
-```
-
-`-d` melakukan ini lalu keluar:
-
-1. Menulis `~/.config/systemd/user/ngodingmcp.service` dengan
-   `ExecStart="<path absolut binary ini>" serve`, `Restart=on-failure`,
-   `WantedBy=default.target`.
-2. Kalau belum ada, membuat `~/.config/ngodingmcp/env` (mode 0600) berisi
-   `NGODINGMCP_TOKEN`. Token-nya diambil dari token yang disimpan TUI, jadi
-   tetap sama. Kalau belum ada token, dibuatkan baru.
-3. Menjalankan `systemctl --user daemon-reload` dan
-   `systemctl --user enable --now ngodingmcp`, menunggu port-nya menjawab, lalu
-   mencetak alamat web UI dan MCP.
-
-Aman dijalankan berulang. Kalau binary dipindah atau di-build di folder lain,
-jalankan `-d` lagi dari lokasi baru: path di unit file diperbarui dan service
-di-restart.
-
-Perintah untuk mengelola service:
-
-| Perintah | Fungsi |
-|---|---|
-| `ngodingmcp status` | Nyala/tidak, alamat web UI + MCP, workspace, binary, status linger |
-| `ngodingmcp logs` | Log service, ikut baris baru (= `journalctl --user -u ngodingmcp -f`). `-n 200` untuk lebih banyak baris, `--no-follow` untuk cetak lalu keluar |
-| `ngodingmcp restart` | Restart, misalnya setelah rebuild binary atau edit file env |
-| `ngodingmcp stop` | Stop. Service tetap enabled, jadi nyala lagi saat login berikutnya |
-
-Mematikan permanen: `systemctl --user disable --now ngodingmcp`.
-
-**Jalan tanpa login (linger).** User service biasanya hanya hidup selama kamu
-login. Supaya tetap jalan setelah logout dan ikut nyala saat boot, jalankan sekali:
-
-```sh
-loginctl enable-linger $USER
-```
-
-`-d` tidak menjalankan ini otomatis; `ngodingmcp status` menunjukkan linger on/off.
-
-**Setelan service** ada di `~/.config/ngodingmcp/env` (format `KEY=value`,
-sama dengan env var CLI), misalnya `NGODINGMCP_ADDR=0.0.0.0:8080` atau
-`NGODINGMCP_ALLOW_RUN=true`. Setelah diedit, jalankan `ngodingmcp restart`.
-Jangan isi `NGODINGMCP_ROOT` di sana: workspace yang dipilih di web UI disimpan
-di `config.json` dan dipakai lagi setelah restart (termasuk setelan
-per-workspace-nya); `NGODINGMCP_ROOT` akan menimpanya di setiap restart.
-
-**Bentrok port.** Kalau service sedang jalan lalu kamu buka TUI biasa
-(`./ngodingmcp`) dan menekan start di alamat yang sama, TUI menampilkan pesan
-"the background service is already running on …" beserta alamat web UI-nya.
-Pakai service itu, atau `ngodingmcp stop` dulu. Sebaliknya, `-d` menolak jalan
-kalau port-nya sedang dipakai TUI atau `serve` manual.
-
-`ngodingmcp serve` adalah mode headless yang dijalankan systemd: tanpa TUI, jalan
-di foreground, log ke stdout/stderr (masuk journald). Biasanya tidak perlu
-diketik sendiri.
-
-### Eksekusi command (opt-in)
-
-`run_command` hanya tersedia bila diaktifkan. Cukup toggle di TUI, atau:
-
-```sh
-./ngodingmcp serve --allow-run
-```
-
-Saat enable, policy memakai daftar **predefined di kode** (`internal/runner/policy.go`):
-
-| Prefix (argumen tambahan bebas) | Exact (harus sama persis) |
-|---|---|
-| `go build` | `bun install --frozen-lockfile` |
-| `go test` | `bun test` |
-| `go vet` | `bun run build` |
-| `gofmt -l` | `bun run dev` |
-| `git status` | |
-| `git diff` | |
-| `git log` | |
-
-Override hanya jika perlu (advanced):
-
-```sh
-./ngodingmcp serve --allow-run --run-allow "go build,go test,make"
-./ngodingmcp serve --allow-run --run-allow-exact "bun install --frozen-lockfile"
-```
-
-Config hanya menyimpan enable flag:
-
-```json
-{
-  "run": { "enabled": true }
-}
-```
-
-Precedence: **flag > environment > config**. Workspace tidak pernah dipakai
-sebagai sumber policy.
-
-Aturannya:
-
-- **Prefix**: `go test ./...` cocok dengan entri `go test`.
-- **Exact**: `bun install --frozen-lockfile` **hanya** cocok persis;
-  `bun install paket-lain` ditolak.
-- Tidak pernah lewat shell — metacharacter tidak diinterpretasi.
-- `cwd` selalu workspace root, timeout default 60 detik (bisa diubah per request,
-  dibatasi oleh `--run-timeout`).
-- Output digabung stdout+stderr dan dipotong pada 256 KiB.
-- Exit code non-zero tetap dikembalikan sebagai hasil (bukan error protokol),
-  supaya AI bisa membaca kegagalan build/test.
-- Saat timeout, seluruh process group dibunuh (termasuk child process).
-- Tanpa `--allow-run`, tool ini tidak terdaftar sama sekali (tetap 20 tools).
-  Dengan `--allow-run`, totalnya 27 tool: 20 editor/git + `run_command` + 6 tool proses.
-
-> Jangan mendaftarkan command yang sama di prefix dan exact sekaligus: entri
-> prefix akan membuka kembali argumen bebas. Untuk installer gunakan **hanya**
-> `--run-allow-exact`.
-
-> Allowlist adalah batas kepercayaan. Entri seperti `go test` tetap bisa
-> menjalankan kode dari workspace; aktifkan hanya untuk workspace yang dipercaya.
-
-### Background process (opt-in)
-
-`run_command` bersifat request/response: proses harus selesai dalam timeout.
-Untuk dev server atau watcher yang harus tetap hidup, gunakan tool proses yang
-ikut aktif bersama `--allow-run`:
-
-| Tool | Fungsi |
-|---|---|
-| `start_process` | jalankan command allowlisted di background; bisa menunggu log/port siap |
-| `list_processes` | status semua proses (starting/running/stopping/exited, exit code, runtime) |
-| `process_logs` | baca stdout+stderr, tail atau incremental lewat cursor |
-| `stop_process` | SIGTERM, lalu SIGKILL setelah grace period (bisa non-blocking) |
-| `restart_process` | stop lalu start ulang dengan argv/cwd/env yang sama |
-| `stop_all_processes` | hentikan semua proses sekaligus |
-
-Contoh alur untuk `bun run dev` (sudah ada di predefined exact policy), dengan
-readiness check supaya `start_process` baru kembali ketika server benar-benar
-siap:
-
-```json
-{
-  "command": "bun run dev",
-  "name": "dev",
-  "wait_for_log": "ready|listening",
-  "wait_for_port": 3000,
-  "timeout_seconds": 20
-}
-```
-
-Lalu baca log secara incremental:
-
-```json
-{ "name": "dev", "after_seq": 0, "tail_lines": 100 }
-```
-
-Response berisi `nextSeq`; panggilan berikutnya cukup mengirim
-`{"name":"dev","after_seq": <nextSeq>}` untuk mendapatkan baris baru saja.
-Timestamp per baris aktif secara default (`timestamps: false` untuk mematikan).
-Output ANSI dan progress bar (`\r`) sudah dibersihkan.
-
-Parameter `start_process` lain:
-
-| Field | Keterangan |
-|---|---|
-| `cwd` | direktori relatif di dalam workspace (default root) |
-| `env` | hanya `PORT`, `HOST`, `HOSTNAME`, `NODE_ENV`, `BUN_ENV`, `CI` |
-| `wait_for_log` | regex Go yang harus muncul di output |
-| `wait_for_port` | port TCP yang harus menerima koneksi |
-| `timeout_seconds` | timeout readiness (default 10, maks 60) |
-
-`stop_process` menerima `wait: false` untuk langsung kembali; eskalasi SIGKILL
-tetap berjalan di background. `restart_process` memakai ulang konfigurasi proses.
-
-Batasan desain:
-
-- Command divalidasi oleh allowlist yang **sama** dengan `run_command`; tidak ada
-  shell, dan `cwd` tidak bisa keluar dari workspace.
-- Maksimal 8 proses berjalan bersamaan dan 64 entri terlacak; entri yang sudah
-  exit dihapus otomatis saat penuh.
-- Log per proses disimpan di ring buffer 128 KiB dengan cursor per baris.
-- Nama proses: huruf, angka, `_`, `-` (maks 32 karakter); kosong = `proc-N`.
-  Nama otomatis tidak akan bentrok dengan nama manual.
-- `stop_process` mengirim sinyal ke seluruh process group/tree, jadi child
-  process ikut berhenti (Job Object di Windows).
-- Saat server di-shutdown, semua proses yang dikelola ikut dihentikan (grace 3
-  detik, lalu force kill).
-- Proses **tidak** bertahan setelah server mati; ini disengaja agar tidak ada
-  orphan process.
-- TUI menampilkan daftar proses dan `Ctrl+X` untuk stop semua. Di web UI, panel
-  Processes punya tombol restart dan stop per proses; klik prosesnya untuk
-  membuka log (refresh tiap detik lewat cursor `nextSeq`, stderr berwarna
-  merah, opsi follow) lengkap dengan tombol restart/stop.
-- Endpoint REST web UI (perlu auth): `GET /api/processes/{name}/logs?tail=200`
-  atau `?after=<nextSeq>`, `POST /api/processes/{name}/stop`,
-  `POST /api/processes/{name}/restart`.
-
-> `bun run dev` hanya masuk akal lewat `start_process`. Jika dipanggil lewat
-> `run_command`, ia akan tetap berjalan sampai timeout lalu dibunuh.
-
-## Menghubungkan MCP client
-
-Endpoint: `POST http://127.0.0.1:8080/mcp`
-
-Contoh konfigurasi (format klien MCP yang mendukung HTTP + header):
+Contoh config client yang mendukung HTTP + header:
 
 ```json
 {
@@ -500,90 +86,53 @@ Contoh konfigurasi (format klien MCP yang mendukung HTTP + header):
     "ngodingmcp": {
       "type": "http",
       "url": "http://127.0.0.1:8080/mcp",
-      "headers": {
-        "Authorization": "Bearer rahasia-panjang"
-      }
+      "headers": { "Authorization": "Bearer rahasia-panjang" }
     }
   }
 }
 ```
 
+**Sesame** (custom MCP server): Sesame menyambung dari internet, jadi
+NgodingMCP perlu diakses lewat HTTPS publik, misalnya di belakang reverse proxy
+TLS. Isi URL `https://<domain-kamu>/mcp`, lalu pilih autentikasi token (dikirim
+sebagai Bearer) atau API key dengan header `X-API-Key`. OAuth belum didukung.
+
+## Konfigurasi
+
+- Setelan TUI dan Web UI disimpan di `~/.config/ngodingmcp/config.json`
+  (di luar workspace, mode `0600`), termasuk daftar workspace tersimpan.
+- Service systemd membaca `~/.config/ngodingmcp/env` (format `KEY=value`).
+- Urutan prioritas: **flag > environment > config.json**.
+
+Tabel flag dan env lengkap: [docs/configuration.md](docs/configuration.md).
+
 ## Catatan keamanan
 
-- Token dikirim sebagai header biasa. Jalankan di `localhost`, atau taruh di
-  belakang reverse proxy TLS bila diakses dari jaringan lain.
-- Root workspace adalah batas keamanan. Jangan menaruh symlink ke luar root bila
-  tidak yakin; symlink semacam itu tetap ditolak saat diakses.
-- Tool `write_file` bersifat destruktif (menimpa file). Gunakan `replace_text`
-  untuk edit kecil.
+- Jalankan di `localhost`, atau di belakang reverse proxy TLS kalau diakses dari
+  jaringan lain. Token dikirim sebagai header biasa.
+- Tool git bisa commit, push, pull, dan merge, tapi push tidak pernah force,
+  pull hanya fast-forward, merge yang konflik di-abort otomatis, dan hook serta
+  program dari config repo tidak pernah jalan. Tool remote tidak pernah meminta
+  password; auth memakai ssh-agent/key, credential helper global, atau `gh`.
+- File sensitif diblokir secara default. `--allow-sensitive` membuka akses AI ke
+  `.env`, private key, dan isi `.git`.
 - `run_command` dan background process memberi akses eksekusi sebagai user yang
-  menjalankan server. Aktifkan hanya dengan allowlist minimal dan di workspace
-  tepercaya.
-- `start_process`/`stop_process` dapat menyalakan dan mematikan proses; seluruh
-  proses dimatikan saat server shutdown.
-- **File sensitif diblokir secara default**: `.env` dan `.env.*` (kecuali template
-  seperti `.env.example`, `.env.sample`, `.env.template`, `.env.dist`), folder
-  `.git`, `.ssh`, `.aws`, `.gnupg`, file `.npmrc`, `.pypirc`, `.netrc`,
-  `.git-credentials`, `.htpasswd`, `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519`, dan
-  ekstensi `.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`. File ini tidak bisa
-  dibaca/ditulis/diedit, disembunyikan dari list, search, stats, dan count, dan
-  delete rekursif ditolak bila foldernya berisi file tersebut. Matikan dengan
-  `--allow-sensitive` (atau `NGODINGMCP_ALLOW_SENSITIVE=true`) hanya bila perlu.
-- **Error tanpa path host**: pesan error tool tidak pernah memuat path absolut
-  workspace di host; path diganti menjadi path relatif terhadap root.
-- Tool git hanya read-only dan tidak menjalankan program dari config repo
-  (fsmonitor, pager, external diff, textconv dimatikan).
+  menjalankan server. Aktifkan hanya di workspace tepercaya.
 
-## Struktur
+Detail lengkap: [docs/security.md](docs/security.md).
 
-```
-ngodingmcp/
-├── main.go                     # entrypoint: `ngodingmcp` (server) / `ngodingmcp tui`
-├── service_cmd.go              # subcommand -d, stop, restart, status, logs
-├── internal/
-│   ├── app/                    # wiring server bersama (dipakai CLI & TUI)
-│   ├── auth/                   # token auth (Bearer/X-API-Key/cookie)
-│   ├── buildinfo/              # versi binary: CalVer + commit git + waktu build
-│   ├── config/                 # setting TUI + run policy (di luar workspace)
-│   ├── tui/                    # control panel (bubbletea)
-│   ├── service/                # systemd user service: unit + env file, systemctl/journalctl
-│   │                           #   lewat interface Commander (test tidak memanggil systemd)
-│   ├── runner/                 # eksekusi command allowlisted (opt-in)
-│   ├── procman/                # background process manager (opt-in)
-│   ├── workspace/              # operasi file tersandbox + atomic write,
-│   │                           #   blokir file sensitif, edit_file + diff, cek delimiter
-│   ├── fetch/                  # download_file: https + guard IP saat dial
-│   ├── gitread/                # git status/diff/log read-only
-│   ├── gitwrite/               # git init/add/unstage/commit/branch (tanpa push/force/hook)
-│   ├── mcpserver/              # definisi MCP tools, satu file per domain:
-│   │   ├── server.go           #   Options, konstruktor, daftar tool aktif, middleware
-│   │   ├── helpers.go          #   textResult, preset anotasi, helper kecil
-│   │   ├── safe_error.go       #   scrub path host dari error
-│   │   ├── activity.go         #   log aktivitas per tool call
-│   │   ├── tools_file.go       #   read/write/list/info/mkdir/move/delete
-│   │   ├── tools_edit.go       #   replace_text, edit_file, insert/delete/replace_lines
-│   │   ├── tools_search.go     #   search_text, search_and_replace
-│   │   ├── tools_inspect.go    #   workspace_stats, validate_syntax, count_tokens
-│   │   ├── tools_git.go        #   git read-only + git write
-│   │   ├── tools_run.go        #   run_command (opt-in)
-│   │   ├── tools_process.go    #   background process tools (opt-in)
-│   │   ├── tools_download.go   #   download_file (opt-in)
-│   │   └── testdata/tools.golden.json  # kontrak semua tool (TestToolContract)
-│   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
-│       └── web/                # index.html, login.html, app.js, style.css
-└── internal/*/*_test.go        # app, buildinfo, config, gitwrite, mcpserver, procman, service, tui, webui, workspace
-```
+## Dokumentasi
 
-## Test
+- [docs/tools.md](docs/tools.md): daftar tool dan parameter penting, git, `edit_file`, `validate_syntax`, `download_file`
+- [docs/run-and-processes.md](docs/run-and-processes.md): allowlist, `run_command`, background process
+- [docs/web-ui.md](docs/web-ui.md): Web UI, upload, workspace selector, endpoint REST
+- [docs/tui.md](docs/tui.md): tombol TUI, toggle, log aktivitas
+- [docs/service.md](docs/service.md): systemd user service, file env, linger, bentrok port
+- [docs/configuration.md](docs/configuration.md): subcommand, flag, env, `config.json`
+- [docs/security.md](docs/security.md): sandbox, file sensitif, batasan git
+- [docs/versioning.md](docs/versioning.md): format versi build dan cara build
+- [docs/development.md](docs/development.md): struktur folder, test, `TestToolContract`
 
-```sh
-go test ./...
-```
+## Credits
 
-Nama, deskripsi, anotasi, dan schema semua tool dikunci oleh `TestToolContract`
-(`internal/mcpserver/testdata/tools.golden.json`). Kalau kontrak tool memang sengaja
-diubah, perbarui snapshot lalu review diff-nya:
-
-```sh
-go test ./internal/mcpserver -run TestToolContract -args -update
-```
+Built with Maya (Sesame AI) via ngodingMCP, MCP server berbasis Go ini sendiri.
