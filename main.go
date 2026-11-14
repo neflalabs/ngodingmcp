@@ -60,6 +60,15 @@ Server flags:
                            "*.example.com" for subdomains); empty = any public host
   -download-max-bytes int  maximum size per download_file call (default 20971520)
   -upload-max-bytes int    maximum size per file uploaded in the web UI (default 20971520)
+  -public-url string       external base URL of this server (e.g. "https://mcp.example.com");
+                           used as the OAuth issuer/resource identifier. Default derives it
+                           from the request Host header
+  -trusted-proxy string    comma-separated peers whose X-Forwarded-Proto header is
+                           honored when deriving the OAuth issuer behind a TLS-terminating
+                           proxy (default "loopback"). Keywords: loopback, private, none;
+                           otherwise CIDR blocks or single IPs (e.g. Cloudflare's ranges)
+  -oauth                   enable the embedded OAuth authorization server for /mcp
+                           (default true). Disable with --oauth=false
 
 Control panel flags:
   -root string             preset workspace root
@@ -71,7 +80,9 @@ Environment: NGODINGMCP_ADDR, NGODINGMCP_ROOT, NGODINGMCP_TOKEN,
              NGODINGMCP_RUN_ALLOWLIST_EXACT, NGODINGMCP_RUN_TIMEOUT,
              NGODINGMCP_ALLOW_SENSITIVE, NGODINGMCP_ALLOW_DOWNLOAD,
              NGODINGMCP_DOWNLOAD_ALLOW_HOSTS, NGODINGMCP_DOWNLOAD_MAX_BYTES,
-             NGODINGMCP_UPLOAD_MAX_BYTES
+             NGODINGMCP_UPLOAD_MAX_BYTES, NGODINGMCP_PUBLIC_URL,
+             NGODINGMCP_TRUSTED_PROXIES,
+             NGODINGMCP_OAUTH
 
 Settings are also loaded from the TUI config file (see "ngodingmcp tui");
 flags and environment variables override it.
@@ -175,6 +186,10 @@ type serverOptions struct {
 	downloadHosts    string
 	downloadMaxBytes int64
 	uploadMaxBytes   int64
+	// OAuth (enabled by default) and the external base URL for its issuer.
+	publicURL      string
+	oauth          bool
+	trustedProxies string
 }
 
 func parseServerFlags(args []string) (*serverOptions, error) {
@@ -198,6 +213,9 @@ func parseServerFlags(args []string) (*serverOptions, error) {
 	fs.StringVar(&opts.downloadHosts, "download-allow-host", os.Getenv("NGODINGMCP_DOWNLOAD_ALLOW_HOSTS"), "limit download_file to these hosts (comma-separated); empty means any public host")
 	fs.Int64Var(&opts.downloadMaxBytes, "download-max-bytes", envInt64("NGODINGMCP_DOWNLOAD_MAX_BYTES", 20<<20), "maximum size per download_file call, in bytes")
 	fs.Int64Var(&opts.uploadMaxBytes, "upload-max-bytes", envInt64("NGODINGMCP_UPLOAD_MAX_BYTES", 20<<20), "maximum size per file uploaded through the web UI, in bytes")
+	fs.StringVar(&opts.publicURL, "public-url", envOr("NGODINGMCP_PUBLIC_URL", saved.PublicURL), "external base URL of this server (e.g. \"https://mcp.example.com\"); used as the OAuth issuer/resource identifier")
+	fs.BoolVar(&opts.oauth, "oauth", envBoolFrom("NGODINGMCP_OAUTH", oauthSavedOr(saved, true)), "enable the embedded OAuth authorization server for /mcp (static token still works)")
+	fs.StringVar(&opts.trustedProxies, "trusted-proxy", envOr("NGODINGMCP_TRUSTED_PROXIES", firstNonEmpty(strings.Join(saved.TrustedProxies, ","), "loopback")), "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -261,6 +279,9 @@ func runServer(opts *serverOptions) error {
 		DownloadAllowHosts: splitList(opts.downloadHosts),
 		DownloadMaxBytes:   opts.downloadMaxBytes,
 		UploadMaxBytes:     opts.uploadMaxBytes,
+		PublicURL:          opts.publicURL,
+		OAuthDisabled:      !opts.oauth,
+		TrustedProxies:     splitList(opts.trustedProxies),
 		Version:            buildinfo.Version(),
 		Logger:             logger,
 	})
@@ -325,6 +346,15 @@ func envBoolFrom(key string, fallback bool) bool {
 		return fallback
 	}
 	return envBool(key)
+}
+
+// oauthSavedOr returns the OAuth setting from config.json when set,
+// otherwise the default (enabled).
+func oauthSavedOr(saved config.Config, fallback bool) bool {
+	if saved.OAuth == nil {
+		return fallback
+	}
+	return *saved.OAuth
 }
 
 func firstNonEmpty(values ...string) string {

@@ -279,6 +279,9 @@ var nonPublic = []netip.Prefix{
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved, broadcast
 	netip.MustParsePrefix("2001:db8::/32"),   // documentation
 	netip.MustParsePrefix("64:ff9b:1::/48"),  // local-use NAT64
+	netip.MustParsePrefix("64:ff9b::/96"),    // well-known NAT64 prefix (embeds arbitrary IPv4)
+	netip.MustParsePrefix("2002::/16"),       // 6to4 (embeds arbitrary IPv4)
+	netip.MustParsePrefix("2001::/32"),       // Teredo (embeds arbitrary IPv4)
 }
 
 // IsPublicIP reports whether ip is a public unicast address. Loopback,

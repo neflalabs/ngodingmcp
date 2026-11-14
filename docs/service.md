@@ -56,7 +56,8 @@ loginctl enable-linger $USER
 
 Setelan service ada di `~/.config/ngodingmcp/env` (format `KEY=value`, sama
 dengan env var CLI di [configuration.md](configuration.md)), misalnya
-`NGODINGMCP_ADDR=0.0.0.0:8080` atau `NGODINGMCP_ALLOW_RUN=true`. Setelah diedit,
+`NGODINGMCP_ADDR=0.0.0.0:8080`, `NGODINGMCP_ALLOW_RUN=true`, atau
+`NGODINGMCP_PUBLIC_URL=https://mcp.example.com` untuk OAuth. Setelah diedit,
 jalankan `ngodingmcp restart`.
 
 Jangan isi `NGODINGMCP_ROOT` di sana: workspace yang dipilih di Web UI disimpan di

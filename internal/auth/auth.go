@@ -3,6 +3,7 @@
 package auth
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"net/http"
@@ -48,7 +49,11 @@ func (a *Authenticator) equal(got string) bool {
 	if got == "" || a.token == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(a.token)) == 1
+	// Compare digests so the length of the secret is not leaked by the
+	// constant-time comparison's early return on length mismatch.
+	gh := sha256.Sum256([]byte(got))
+	th := sha256.Sum256([]byte(a.token))
+	return subtle.ConstantTimeCompare(gh[:], th[:]) == 1
 }
 
 // API protects machine endpoints (MCP and REST). Unauthorized requests get a

@@ -13,6 +13,11 @@ UI-nya bawaan (embedded di binary, tanpa dependency frontend):
   [run-and-processes.md](run-and-processes.md));
 - upload file;
 - workspace selector;
+- **⚙ Settings** — same settings as the TUI's persisted panel, saved to
+  `config.json`: listen address, auth token, `run_command` & processes,
+  sensitive files (applied live), `download_file`, plus the OAuth Public URL,
+  trusted proxies and OAuth toggle. Applies after the server restarts, except
+  the sensitive-files toggle. See [oauth.md](oauth.md) for the OAuth fields;
 - sidebar yang bisa di-collapse (tombol ☰ atau `Ctrl+B`; statusnya diingat browser);
 - versi build di status bar (tooltip berisi waktu build, lihat [versioning.md](versioning.md)).
 
@@ -76,7 +81,8 @@ foldernya.
 
 Semua endpoint `/api/...` wajib login/token (tanpa itu dibalas `401`). Halaman
 `/login`, `/logout`, dan aset `/static/` terbuka; `/mcp` memakai auth yang sama
-dengan `/api`.
+dengan `/api` (token statis atau OAuth — lihat [oauth.md](oauth.md)). Endpoint
+discovery dan flow OAuth (`/.well-known/...`, `/oauth/...`) terbuka.
 
 | Endpoint | Fungsi |
 |---|---|

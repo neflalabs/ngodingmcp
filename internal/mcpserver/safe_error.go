@@ -15,6 +15,12 @@ func safeErrorMiddleware(ws *workspace.Workspace) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			res, err := next(ctx, method, req)
+			if err != nil {
+				// The SDK may surface err's message to the client (as a
+				// protocol error or an IsError result); scrub host paths
+				// here instead of gambling on which it does.
+				err = ws.SafeError(err)
+			}
 			if r, ok := res.(*mcp.CallToolResult); ok && r != nil && r.IsError {
 				for _, c := range r.Content {
 					if tc, ok := c.(*mcp.TextContent); ok {

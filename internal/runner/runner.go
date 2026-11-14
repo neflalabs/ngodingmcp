@@ -27,6 +27,12 @@ var (
 	ErrNotAllowed   = errors.New("command is not in the allowlist")
 )
 
+// blockedFlags are arguments that turn an allowlisted command into a way to
+// run other programs or write outside the workspace: -exec/-toolexec make the
+// go toolchain invoke an alternate program, --exec covers git helpers, and
+// --output lets git diff/log overwrite files anywhere the user can write.
+var blockedFlags = []string{"-exec", "--exec", "-toolexec", "--toolexec", "--output", "-output"}
+
 // Options configures a Runner.
 type Options struct {
 	// Root is the working directory for every command.
@@ -164,7 +170,9 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 	start := time.Now()
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = r.Root()
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	// Children could exfiltrate the parent's environment, so secrets are
+	// stripped; an allowlist of flags/commands still governs what runs.
+	cmd.Env = append(CleanEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0")
 	// Ensure cancellation (timeout) also terminates child processes spawned by
 	// the command, e.g. the workers started by package managers.
 	setProcessGroup(cmd)
@@ -185,6 +193,12 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 		res.ExitCode = -1
 		return res, nil
 	}
+	if err := ctx.Err(); err != nil {
+		// The caller's context was canceled, not our timeout: report it
+		// as an error instead of a silent -1 exit.
+		res.ExitCode = -1
+		return res, err
+	}
 	if runErr == nil {
 		return res, nil
 	}
@@ -192,6 +206,13 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 	if errors.As(runErr, &exitErr) {
 		res.ExitCode = exitErr.ExitCode()
 		return res, nil
+	}
+	if errors.Is(runErr, exec.ErrWaitDelay) {
+		// The command itself is gone; a detached child kept the pipes
+		// open past WaitDelay. Surface the partial output with a clear
+		// error instead of a bare wrapped exec error.
+		res.ExitCode = -1
+		return res, fmt.Errorf("%s: output pipes stayed open past the wait delay (detached children); output may be incomplete", argv[0])
 	}
 	return res, fmt.Errorf("run %s: %w", argv[0], runErr)
 }
@@ -206,8 +227,25 @@ func (r *Runner) Check(argv []string) error {
 	if err := validateArgv(argv); err != nil {
 		return err
 	}
+	if err := checkBlockedFlags(argv); err != nil {
+		return err
+	}
 	if !r.allowed(argv) {
 		return fmt.Errorf("%w: %s", ErrNotAllowed, FormatArgv(argv))
+	}
+	return nil
+}
+
+// checkBlockedFlags rejects argv that would hand program execution (or an
+// arbitrary file to overwrite) to an allowlisted command. The allowlist
+// constrains which commands may run; these flags are never legitimate here.
+func checkBlockedFlags(argv []string) error {
+	for _, tok := range argv[1:] {
+		for _, flag := range blockedFlags {
+			if tok == flag || strings.HasPrefix(tok, flag+"=") {
+				return fmt.Errorf("%w: argument %q is not allowed (it would run another program or write outside the workspace)", ErrNotAllowed, tok)
+			}
+		}
 	}
 	return nil
 }
@@ -273,6 +311,42 @@ func validateTokens(tokens []string) error {
 		}
 	}
 	return nil
+}
+
+// secretEnvMarkers mark an environment variable as carrying a secret. Any
+// child process of an allowlisted command could otherwise exfiltrate the
+// parent's environment (API keys, tokens, passwords) simply by reading it.
+// Matching is case-insensitive and substring-based, on purpose: it is
+// better to drop a harmless variable than to leak a credential.
+var secretEnvMarkers = []string{
+	"TOKEN", "SECRET", "PASSWORD", "PASSWD", "PASSPHRASE",
+	"APIKEY", "API_KEY", "ACCESS_KEY", "PRIVATE_KEY",
+	"CREDENTIAL", "CREDENTIALS", "AUTH_TOKEN", "AUTH_HEADER",
+}
+
+// CleanEnv returns env with secret-bearing variables removed. Everything
+// else is kept: PATH, HOME, SSH_AUTH_SOCK, GOPATH and the rest of the
+// toolchain environment are required for normal builds and tests.
+func CleanEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		name := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			name = kv[:i]
+		}
+		upper := strings.ToUpper(name)
+		blocked := false
+		for _, marker := range secretEnvMarkers {
+			if strings.Contains(upper, marker) {
+				blocked = true
+				break
+			}
+		}
+		if !blocked {
+			out = append(out, kv)
+		}
+	}
+	return out
 }
 
 // FormatArgv renders argv for display, quoting arguments with spaces.

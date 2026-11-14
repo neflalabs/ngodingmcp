@@ -224,3 +224,36 @@ func TestRunnerHelperOutput(t *testing.T) {
 	}
 	println(strings.Repeat("x", 5000))
 }
+
+func TestCleanEnv(t *testing.T) {
+	env := []string{
+		"PATH=/usr/bin",
+		"HOME=/home/u",
+		"SSH_AUTH_SOCK=/run/ssh.sock",
+		"NGODINGMCP_TOKEN=supersecret",
+		"GITHUB_TOKEN=ghp_secret",
+		"AWS_ACCESS_KEY_ID=AKIA123",
+		"AWS_SECRET_ACCESS_KEY=abc",
+		"NPM_TOKEN=npm_123",
+		"DB_PASSWORD=hunter2",
+		"MY_PASSPHRASE=pass",
+		"SOME_API_KEY=key",
+		"CLIENT_CREDENTIALS=cred",
+	}
+	got := CleanEnv(env)
+	seen := map[string]bool{}
+	for _, kv := range got {
+		name, _, _ := strings.Cut(kv, "=")
+		seen[name] = true
+	}
+	for _, blocked := range []string{"NGODINGMCP_TOKEN", "GITHUB_TOKEN", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "NPM_TOKEN", "DB_PASSWORD", "MY_PASSPHRASE", "SOME_API_KEY", "CLIENT_CREDENTIALS"} {
+		if seen[blocked] {
+			t.Errorf("CleanEnv kept secret var %q", blocked)
+		}
+	}
+	for _, kept := range []string{"PATH", "HOME", "SSH_AUTH_SOCK"} {
+		if !seen[kept] {
+			t.Errorf("CleanEnv dropped %q", kept)
+		}
+	}
+}

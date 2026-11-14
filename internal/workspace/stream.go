@@ -104,12 +104,31 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 			return StreamResult{}, err
 		}
 	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
+	// Keep the mode of an existing file; only new files get 0644.
+	chmod := os.FileMode(0o644)
+	if st, err := os.Stat(full); err == nil {
+		chmod = st.Mode().Perm()
+	}
+	if err := os.Chmod(tmpName, chmod); err != nil {
 		return StreamResult{}, err
 	}
-	// Re-check right before the rename: the destination may have appeared
-	// while the data was streaming.
-	if _, err := w.CheckWritable(relp, opts.Overwrite); err != nil {
+	// Put the file in place atomically. With overwrite off the link(2)
+	// fails with EEXIST, closing the race between an earlier existence
+	// check and putting the file in place; with overwrite on, rename
+	// replaces atomically.
+	if !opts.Overwrite {
+		if err := os.Link(tmpName, full); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return StreamResult{}, ErrExists
+			}
+			return StreamResult{}, err
+		}
+		if err := os.Remove(tmpName); err != nil {
+			return StreamResult{}, err
+		}
+		return StreamResult{Path: relp, Bytes: n, SHA256: sum}, nil
+	}
+	if _, err := w.CheckWritable(relp, true); err != nil {
 		return StreamResult{}, err
 	}
 	if err := os.Rename(tmpName, full); err != nil {

@@ -14,15 +14,18 @@ var ErrSensitive = errors.New("access to sensitive path is blocked (restart with
 
 // sensitiveDirs are directory names whose whole subtree is blocked.
 var sensitiveDirs = map[string]bool{
-	".git":   true,
-	".ssh":   true,
-	".aws":   true,
-	".gnupg": true,
+	".git":    true,
+	".ssh":    true,
+	".aws":    true,
+	".gnupg":  true,
+	".kube":   true,
+	".docker": true,
 }
 
 // sensitiveNames are exact file names (case-insensitive) that are blocked.
 var sensitiveNames = map[string]bool{
 	".env":             true,
+	".envrc":           true,
 	".npmrc":           true,
 	".pypirc":          true,
 	".netrc":           true,
@@ -32,6 +35,13 @@ var sensitiveNames = map[string]bool{
 	"id_dsa":           true,
 	"id_ecdsa":         true,
 	"id_ed25519":       true,
+	"credentials":      true,
+	"credentials.json": true,
+	"kubeconfig":       true,
+	".pgpass":          true,
+	".my.cnf":          true,
+	".dockercfg":       true,
+	".terraformrc":     true,
 }
 
 // sensitiveExts are file extensions (case-insensitive) that are blocked.
@@ -42,6 +52,11 @@ var sensitiveExts = map[string]bool{
 	".pfx":      true,
 	".jks":      true,
 	".keystore": true,
+	".tfvars":   true,
+	".tfstate":  true,
+	".p8":       true,
+	".gpg":      true,
+	".kdbx":     true,
 }
 
 // envTemplates are .env.* variants meant to be committed, so they stay
@@ -102,8 +117,11 @@ func SensitivePatterns() []string {
 
 // SetAllowSensitive disables (true) or enables (false) sensitive-path
 // blocking. Blocking is on by default. It is meant for setup before the
-// workspace is used; later changes go through Switch.
+// workspace is used; later changes go through Switch. The gate is taken so
+// the update cannot be lost against a concurrent workspace switch.
 func (w *Workspace) SetAllowSensitive(allow bool) {
+	w.gate.Lock()
+	defer w.gate.Unlock()
 	next := *w.st.Load()
 	next.allowSensitive = allow
 	w.st.Store(&next)

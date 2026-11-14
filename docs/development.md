@@ -12,6 +12,9 @@ ngodingmcp/
 ├── internal/
 │   ├── app/                    # wiring server bersama (dipakai CLI & TUI), workspace manager
 │   ├── auth/                   # token auth (Bearer/X-API-Key/cookie)
+│   ├── oauth/                  # embedded OAuth 2.1 AS+RS untuk /mcp (MCP spec)
+│                               #   RFC 9728/8414 metadata, DCR (RFC 7591), PKCE,
+│                               #   ES256 access token, consent screen, `oauth.json`
 │   ├── buildinfo/              # versi binary: CalVer + commit git + waktu build
 │   ├── config/                 # setting TUI, daftar workspace, run policy (di luar workspace)
 │   ├── tui/                    # control panel (bubbletea)
@@ -43,7 +46,7 @@ ngodingmcp/
 │       └── web/                # index.html, login.html, app.js, theme.js, style.css
 ├── main_test.go, service_cmd_test.go
 └── internal/*/*_test.go        # app, buildinfo, config, fetch, gitwrite, mcpserver, procman,
-                                #   runner, service, tui, webui, workspace
+                                #   oauth, runner, service, tui, webui, workspace
 ```
 
 Folder `TaskDev/` (catatan pengembangan) dan `dist/` di-gitignore.

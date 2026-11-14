@@ -18,6 +18,7 @@
   </button>
   <div class="root" id="rootPath" title="workspace root">…</div>
   <div class="top-actions">
+    <button id="btnSettings" class="ghost" type="button" title="Server settings">⚙ Settings</button>
     <button id="btnStats" class="ghost" title="Workspace Stats">📊 Stats</button>
     <button id="btnSearchReplaceModal" class="ghost" title="Global Search & Replace">⚡ Replace</button>
     <span class="badge" id="saveState">saved</span>
@@ -158,6 +159,63 @@
         <button id="btnUploadSend" class="primary" disabled>Upload</button>
       </div>
       <div id="uploadResults" class="sr-results hidden"></div>
+    </div>
+  </div>
+</dialog>
+
+<!-- Settings Modal -->
+<dialog id="settingsModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Settings</h3>
+      <button class="ghost close-modal" id="btnCloseSettings">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="settingsAddr">Listen address</label>
+        <input id="settingsAddr" placeholder="0.0.0.0:8080" autocomplete="off" spellcheck="false">
+        <div class="upload-hint">host:port. Where the HTTP server listens; applies after restart.</div>
+      </div>
+      <div class="form-group">
+        <label for="settingsToken">Auth token</label>
+        <input id="settingsToken" type="password" placeholder="empty = generate a random token on start" autocomplete="off" spellcheck="false">
+        <div class="upload-hint">Shown as bullets. Empty means: new random token on next start. Applies after restart — existing sessions keep the old token.</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-row" for="settingsRun"><input type="checkbox" id="settingsRun"> Enable <code>run_command</code> &amp; background processes</label>
+        <div class="upload-hint">Opt-in tools for running allowlisted commands. Applies after restart.</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-row" for="settingsSensitive"><input type="checkbox" id="settingsSensitive"> Allow sensitive files (.env, keys, .git)</label>
+        <div class="upload-hint">Big danger zone: disables the sensitive-file guard for <em>this server</em>. Applied live.</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-row" for="settingsDownload"><input type="checkbox" id="settingsDownload"> Enable <code>download_file</code> (https, public hosts)</label>
+        <div class="upload-hint">Opt-in download tool. Applies after restart.</div>
+      </div>
+
+      <div class="form-divider"></div>
+
+      <div class="form-group">
+        <label for="settingsPublicURL">Public URL (OAuth issuer)</label>
+        <input id="settingsPublicURL" placeholder="https://mcp.example.com" autocomplete="off" spellcheck="false">
+        <div class="upload-hint">Empty: the issuer is derived per request from the Host header (scheme via connection TLS or a trusted proxy's X-Forwarded-Proto).</div>
+      </div>
+      <div class="form-group">
+        <label for="settingsTrustedProxies">Trusted proxies</label>
+        <input id="settingsTrustedProxies" placeholder="loopback" autocomplete="off" spellcheck="false">
+        <div class="upload-hint">Peers whose <code>X-Forwarded-Proto</code> is honored for the issuer. Keywords: <code>loopback</code> (default), <code>private</code>, <code>none</code>; or comma-separated CIDRs/IPs (e.g. Cloudflare's ranges).</div>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-row" for="settingsOAuth"><input type="checkbox" id="settingsOAuth" checked> Embedded OAuth authorization server for /mcp</label>
+        <div class="upload-hint">Off: /mcp only accepts the static token.</div>
+      </div>
+
+      <p class="upload-hint restart-note">Changes are saved to <code>config.json</code> (shared with the TUI). Everything except the sensitive-file toggle is applied after the server restarts; flags/env override the file at start.</p>
+      <div class="modal-actions">
+        <button type="button" class="ghost" id="btnCancelSettings">Cancel</button>
+        <button type="button" id="btnSaveSettings" class="primary">Save</button>
+      </div>
     </div>
   </div>
 </dialog>

@@ -23,6 +23,7 @@ import (
 	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/fetch"
 	"ngodingmcp/internal/mcpserver"
+	"ngodingmcp/internal/oauth"
 	"ngodingmcp/internal/procman"
 	"ngodingmcp/internal/runner"
 	"ngodingmcp/internal/webui"
@@ -59,6 +60,16 @@ type Config struct {
 	// UploadMaxBytes caps each file uploaded through the web UI (default
 	// webui.DefaultUploadMaxBytes).
 	UploadMaxBytes int64
+	// PublicURL is the external base URL of this server, used as the OAuth
+	// issuer/resource identifier (e.g. "https://mcp.example.com"). Empty
+	// derives it per request from the Host header.
+	PublicURL string
+	// TrustedProxies names the peers whose X-Forwarded-Proto header is
+	// honored when deriving the OAuth issuer. Empty means "loopback".
+	TrustedProxies []string
+	// OAuthDisabled turns off the embedded OAuth authorization server. The
+	// static token still works; MCP clients must then authenticate with it.
+	OAuthDisabled bool
 	// LogWriter, when set, receives structured logs instead of stderr. Useful
 	// for embedding the server in a TUI.
 	LogWriter io.Writer
@@ -76,6 +87,7 @@ type Server struct {
 	tools     int
 	http      *http.Server
 	listener  net.Listener
+	logger    *slog.Logger
 }
 
 // New prepares a Server. The workspace root is created if missing, and a random
@@ -182,12 +194,34 @@ func New(cfg Config) (*Server, error) {
 		&mcp.StreamableHTTPOptions{Logger: logger},
 	)
 
+	var oauthServer *oauth.Server
+	var mcpAuth func(http.Handler) http.Handler
+	if !cfg.OAuthDisabled {
+		oauthServer, err = oauth.New(oauth.Config{
+			PublicURL:      cfg.PublicURL,
+			TrustedProxies: cfg.TrustedProxies,
+			Auth:           authn,
+			Logger:         logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("init OAuth: %w", err)
+		}
+		mcpAuth = oauthServer.MCP
+		logOAuthIssuer(logger, cfg)
+	} else {
+		logger.Warn("OAuth disabled; /mcp accepts only the static token")
+		mcpAuth = authn.API
+	}
+
 	mux := http.NewServeMux()
 	mux.Handle("GET /login", http.HandlerFunc(ui.LoginPage))
 	mux.Handle("POST /login", http.HandlerFunc(ui.LoginSubmit))
 	mux.Handle("POST /logout", http.HandlerFunc(ui.Logout))
 	mux.Handle("GET /static/", ui.Static())
-	mux.Handle("/mcp", authn.API(mcpHandler))
+	if oauthServer != nil {
+		oauthServer.RegisterRoutes(mux)
+	}
+	mux.Handle("/mcp", mcpAuth(mcpHandler))
 	mux.Handle("/api/", authn.API(http.StripPrefix("/api", ui.API())))
 	mux.Handle("GET /{$}", authn.Page(http.HandlerFunc(ui.Index)))
 
@@ -200,9 +234,10 @@ func New(cfg Config) (*Server, error) {
 		procs:     procMgr,
 		download:  downloader != nil,
 		tools:     toolCount,
+		logger:    logger,
 		http: &http.Server{
 			Addr:              cfg.Addr,
-			Handler:           logRequests(logger, mux),
+			Handler:           oauth.GuardHost(logRequests(logger, mux)),
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       120 * time.Second,
 		},
@@ -221,7 +256,10 @@ func (s *Server) DownloadEnabled() bool { return s.download }
 // SensitiveGuard reports whether the sensitive-file guard is active.
 func (s *Server) SensitiveGuard() bool { return !s.ws.AllowSensitive() }
 
-// Start binds the listen address and serves in the background.
+// Start binds the listen address and serves in the background. A serve
+// error (other than the listener being closed during shutdown) is logged;
+// shut down and inspect the log when that happens, as the process keeps
+// running without the HTTP listener.
 func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
@@ -229,7 +267,9 @@ func (s *Server) Start() error {
 	}
 	s.listener = ln
 	go func() {
-		_ = s.http.Serve(ln)
+		if err := s.http.Serve(ln); err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("HTTP listener failed", "addr", s.cfg.Addr, "err", err)
+		}
 	}()
 	return nil
 }
@@ -249,6 +289,30 @@ func (s *Server) BaseURL() string {
 		addr = s.listener.Addr().String()
 	}
 	return BaseURLFor(addr)
+}
+
+// logOAuthIssuer warns when OAuth is enabled but cannot present a stable
+// external identity (local-only derivation from the Host header).
+func logOAuthIssuer(logger *slog.Logger, cfg Config) {
+	if cfg.PublicURL != "" {
+		logger.Info("OAuth enabled", "issuer", cfg.PublicURL)
+		return
+	}
+	logger.Info("OAuth enabled; issuer is derived per request (Host header; X-Forwarded-Proto honored only from trusted proxies)")
+	if !isLoopbackAddr(cfg.Addr) {
+		logger.Warn("OAuth without -public-url on a non-loopback address; MCP clients need a stable https origin")
+	}
+}
+
+func isLoopbackAddr(addr string) bool {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		host = addr
+	}
+	host = strings.ToLower(strings.Trim(host, "[]"))
+	// An empty host is a wildcard listen (0.0.0.0 / ::), i.e. reachable
+	// from the network, not loopback.
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 // BaseURLFor is the HTTP origin for a listen address; a wildcard host
@@ -322,14 +386,46 @@ func (s *Server) Addr() string {
 	return s.cfg.Addr
 }
 
+// statusRecorder captures only the response status code for logging.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	size   int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.size += n
+	return n, err
+}
+
+func (r *statusRecorder) Flush() {
+	// The streaming endpoint (SSE) needs Flush to pass through, otherwise the
+	// client never receives events.
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		next.ServeHTTP(w, r)
+		sr := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(sr, r)
 		logger.Info("http",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote", r.RemoteAddr,
+			"status", sr.status,
+			"bytes", sr.size,
 			"duration", time.Since(start).Round(time.Millisecond),
 		)
 	})

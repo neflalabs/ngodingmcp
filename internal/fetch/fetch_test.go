@@ -261,7 +261,13 @@ func TestHostAllowlist(t *testing.T) {
 
 func TestIsPublicIP(t *testing.T) {
 	blocked := []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.100.1.1",
-		"0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "224.0.0.1", "255.255.255.255"}
+		"0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "224.0.0.1", "255.255.255.255",
+		"64:ff9b::7f00:1",             // well-known NAT64 → 127.0.0.1
+		"64:ff9b::a9fe:a9fe",          // well-known NAT64 → 169.254.169.254 (cloud metadata)
+		"2002:7f00:1::",               // 6to4 → 127.0.0.1
+		"2002:a9fe:a9fe::",            // 6to4 → 169.254.169.254
+		"2001:0000:5ef5:79fd:0:0:0:1", // Teredo
+	}
 	for _, s := range blocked {
 		if IsPublicIP(netip.MustParseAddr(s)) {
 			t.Errorf("%s should be blocked", s)

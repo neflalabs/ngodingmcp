@@ -92,15 +92,24 @@ Contoh config client yang mendukung HTTP + header:
 }
 ```
 
+**OAuth (MCP spec)**: `/mcp` juga berfungsi sebagai OAuth 2.1 resource server sekaligus
+authorization server embedded. Client MCP yang mendukung spec bisa discover (`/.well-known/oauth-protected-resource`),
+registrasi (DCR), dan authorize dengan PKCE otomatis — lihat [docs/oauth.md](docs/oauth.md).
+Token statis tetap diterima sebagai alternatif.
+
 **Sesame** (custom MCP server): Sesame menyambung dari internet, jadi
 NgodingMCP perlu diakses lewat HTTPS publik, misalnya di belakang reverse proxy
 TLS. Isi URL `https://<domain-kamu>/mcp`, lalu pilih autentikasi token (dikirim
-sebagai Bearer) atau API key dengan header `X-API-Key`. OAuth belum didukung.
+sebagai Bearer) atau API key dengan header `X-API-Key`. Alternatifnya: OAuth (lihat
+[docs/oauth.md](docs/oauth.md)) dengan `-public-url https://<domain-kamu>` (atau `-trusted-proxy` jika
+proxy dipercaya hanya untuk menurunkan scheme).
 
 ## Konfigurasi
 
 - Setelan TUI dan Web UI disimpan di `~/.config/ngodingmcp/config.json`
   (di luar workspace, mode `0600`), termasuk daftar workspace tersimpan.
+- Signing key dan daftar client OAuth tersimpan di `~/.config/ngodingmcp/oauth.json`
+  (mode `0600`; refresh token tidak pernah ditulis ke disk).
 - Service systemd membaca `~/.config/ngodingmcp/env` (format `KEY=value`).
 - Urutan prioritas: **flag > environment > config.json**.
 
@@ -129,6 +138,7 @@ Detail lengkap: [docs/security.md](docs/security.md).
 - [docs/tui.md](docs/tui.md): tombol TUI, toggle, log aktivitas
 - [docs/service.md](docs/service.md): systemd user service, file env, linger, bentrok port
 - [docs/configuration.md](docs/configuration.md): subcommand, flag, env, `config.json`
+- [docs/oauth.md](docs/oauth.md): OAuth untuk `/mcp` (MCP spec), discovery, DCR, consent, `public-url`, `trusted-proxy`
 - [docs/security.md](docs/security.md): sandbox, file sensitif, batasan git
 - [docs/versioning.md](docs/versioning.md): format versi build dan cara build
 - [docs/development.md](docs/development.md): struktur folder, test, `TestToolContract`

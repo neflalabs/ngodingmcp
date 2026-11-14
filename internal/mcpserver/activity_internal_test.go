@@ -39,7 +39,7 @@ func TestActivityTargetSkipsContent(t *testing.T) {
 		args map[string]any
 		want string
 	}{
-		{map[string]any{"command": "go test", "args": []string{"./..."}, "env": map[string]string{"TOKEN": secret}}, "go test ./..."},
+		{map[string]any{"command": "go test", "args": []string{"./..."}, "env": map[string]string{"TOKEN": secret}}, "go test (+1 args)"},
 		{map[string]any{"path": "a.go", "content": secret}, "a.go"},
 		{map[string]any{"path": "a.go", "new_content": secret, "from": 1, "to": 2}, "a.go"},
 		{map[string]any{"from": "a.go", "to": "b.go"}, "a.go → b.go"},

@@ -13,6 +13,17 @@ const state = {
   activeNode: null,
 };
 
+// escapeHtml makes a value safe to interpolate into innerHTML.
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[c]);
+}
+
 // --- API ------------------------------------------------------------------
 
 async function api(path, options = {}) {
@@ -429,20 +440,21 @@ async function openStatsModal() {
   body.innerHTML = "Fetching workspace stats…";
   try {
     const st = await api("/stats");
+    const num = (v) => Number(v) || 0;
     let extRows = "";
     for (const [ext, e] of Object.entries(st.byExtension || {})) {
-      extRows += `<tr><td>${ext}</td><td>${e.files}</td><td>${e.lines}</td><td>${e.bytes.toLocaleString()} B</td></tr>`;
+      extRows += `<tr><td>${escapeHtml(ext)}</td><td>${num(e.files)}</td><td>${num(e.lines)}</td><td>${num(e.bytes).toLocaleString()} B</td></tr>`;
     }
     let largestRows = "";
     for (const f of st.largestFiles || []) {
-      largestRows += `<tr><td>${f.path}</td><td>${f.lines} lines</td></tr>`;
+      largestRows += `<tr><td>${escapeHtml(f.path)}</td><td>${num(f.lines)} lines</td></tr>`;
     }
 
     body.innerHTML = `
       <div class="stats-grid">
-        <div class="stat-box"><div class="stat-val">${st.totalFiles}</div><div class="stat-lbl">Files</div></div>
-        <div class="stat-box"><div class="stat-val">${st.totalLines.toLocaleString()}</div><div class="stat-lbl">Lines</div></div>
-        <div class="stat-box"><div class="stat-val">${Math.floor(st.totalBytes / 1024).toLocaleString()} KB</div><div class="stat-lbl">Size</div></div>
+        <div class="stat-box"><div class="stat-val">${num(st.totalFiles)}</div><div class="stat-lbl">Files</div></div>
+        <div class="stat-box"><div class="stat-val">${num(st.totalLines).toLocaleString()}</div><div class="stat-lbl">Lines</div></div>
+        <div class="stat-box"><div class="stat-val">${Math.floor(num(st.totalBytes) / 1024).toLocaleString()} KB</div><div class="stat-lbl">Size</div></div>
       </div>
       <div class="stats-section-title">Files By Extension</div>
       <table class="stats-table">
@@ -456,7 +468,7 @@ async function openStatsModal() {
       </table>
     `;
   } catch (err) {
-    body.innerHTML = `<span style="color:var(--danger)">Failed to load stats: ${err.message}</span>`;
+    body.innerHTML = `<span style="color:var(--danger)">Failed to load stats: ${escapeHtml(err.message)}</span>`;
   }
 }
 
@@ -488,9 +500,9 @@ async function executeSearchReplace(dryRun) {
       body: { pattern, replacement, glob, dryRun, maxFiles: 50 },
     });
 
-    let msg = `<b>${dryRun ? "[DRY RUN] Would change" : "Changed"} ${res.filesChanged} files (${res.totalReplacements} replacements):</b><br>`;
+    let msg = `<b>${dryRun ? "[DRY RUN] Would change" : "Changed"} ${Number(res.filesChanged) || 0} files (${Number(res.totalReplacements) || 0} replacements):</b><br>`;
     for (const f of res.files || []) {
-      msg += `• ${f.path}: ${f.replacements} replacements<br>`;
+      msg += `• ${escapeHtml(f.path)}: ${Number(f.replacements) || 0} replacements<br>`;
     }
     if (res.truncated) {
       msg += `<i>(Truncated at 50 files limit)</i><br>`;
@@ -504,7 +516,7 @@ async function executeSearchReplace(dryRun) {
       }
     }
   } catch (err) {
-    resDiv.innerHTML = `<span style="color:var(--danger)">Error: ${err.message}</span>`;
+    resDiv.innerHTML = `<span style="color:var(--danger)">Error: ${escapeHtml(err.message)}</span>`;
   }
 }
 
@@ -1109,7 +1121,54 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+// --- Settings Modal ----------------------------------------------------------
+
+async function openSettingsModal() {
+  try {
+    const s = await api("/settings");
+    $("settingsAddr").value = s.addr || "";
+    $("settingsToken").value = s.token || "";
+    $("settingsRun").checked = !!s.runEnabled;
+    $("settingsSensitive").checked = !!s.allowSensitive;
+    $("settingsDownload").checked = !!s.allowDownload;
+    $("settingsPublicURL").value = s.publicUrl || "";
+    $("settingsTrustedProxies").value = (s.trustedProxies || []).join(", ");
+    $("settingsOAuth").checked = !!s.oauth;
+    $("settingsModal").showModal();
+  } catch (err) {
+    setStatus("settings: " + err.message, true);
+  }
+}
+
+async function saveSettings() {
+  const publicUrl = $("settingsPublicURL").value.trim();
+  const trustedProxies = $("settingsTrustedProxies").value
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const oauth = $("settingsOAuth").checked;
+  const addr = $("settingsAddr").value.trim();
+  const token = $("settingsToken").value.trim();
+  const runEnabled = $("settingsRun").checked;
+  const allowSensitive = $("settingsSensitive").checked;
+  const allowDownload = $("settingsDownload").checked;
+  try {
+    await api("/settings", {
+      method: "PUT",
+      body: { publicUrl, oauth, trustedProxies, addr, token, runEnabled, allowSensitive, allowDownload },
+    });
+    $("settingsModal").close();
+    setStatus("settings saved — most changes apply after restart", false);
+  } catch (err) {
+    alert("settings: " + err.message);
+  }
+}
+
 $("btnWorkspaces").addEventListener("click", openWorkspacesModal);
+$("btnSettings").addEventListener("click", openSettingsModal);
+$("btnCloseSettings").addEventListener("click", () => $("settingsModal").close());
+$("btnCancelSettings").addEventListener("click", () => $("settingsModal").close());
+$("btnSaveSettings").addEventListener("click", saveSettings);
 $("btnCloseWorkspaces").addEventListener("click", () => $("workspacesModal").close());
 $("wsForm").addEventListener("submit", saveWorkspace);
 $("btnWsCancelEdit").addEventListener("click", resetWorkspaceForm);

@@ -5,6 +5,7 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -24,6 +25,17 @@ type Config struct {
 	AllowDownload bool `json:"allowDownload,omitempty"`
 	// Workspaces are the saved workspaces listed in the Web UI selector.
 	Workspaces []SavedWorkspace `json:"workspaces,omitempty"`
+	// PublicURL is the external base URL of this server (e.g.
+	// "https://mcp.example.com"), used as the OAuth issuer/resource
+	// identifier. Empty means it is derived per request from the Host header.
+	PublicURL string `json:"publicUrl,omitempty"`
+	// TrustedProxies lists the peers whose X-Forwarded-Proto header is
+	// honored when deriving the OAuth issuer (e.g. "loopback", "private",
+	// "none", CIDRs or IPs). Empty means "loopback".
+	TrustedProxies []string `json:"trustedProxies,omitempty"`
+	// OAuth enables the embedded OAuth authorization server for /mcp.
+	// Absent (nil) means enabled.
+	OAuth *bool `json:"oauth,omitempty"`
 }
 
 // RunConfig is the persisted run_command switch. The allowed commands are
@@ -58,6 +70,9 @@ func Path() (string, error) {
 }
 
 // Load reads the config, returning an empty Config when the file is missing.
+// A file that exists but cannot be parsed is moved aside to
+// config.json.corrupt instead of being silently replaced by an empty config,
+// so the user can see and recover their real settings.
 func Load() Config {
 	p, err := Path()
 	if err != nil {
@@ -69,6 +84,9 @@ func Load() Config {
 	}
 	var c Config
 	if err := json.Unmarshal(data, &c); err != nil {
+		aside := p + ".corrupt"
+		_ = os.Rename(p, aside)
+		fmt.Fprintf(os.Stderr, "config: %s is not valid JSON; moved it to %s (%v)\n", p, aside, err)
 		return Config{}
 	}
 	return c

@@ -72,8 +72,9 @@ func addStartProcess(s *mcp.Server, mgr *procman.Manager) {
 			if errors.Is(err, procman.ErrNotReady) && info.Name != "" {
 				_, logs, _ := mgr.Logs(info.Name, 20, 0)
 				if tail := formatLogLines(logs, true); tail != "" {
-					return nil, startProcessOut{}, fmt.Errorf("%w\nrecent output:\n%s", err, tail)
+					return nil, startProcessOut{}, fmt.Errorf("%w\nrecent output:\n%s\nprocess %q is still running; use stop_process to end it", err, tail, info.Name)
 				}
+				return nil, startProcessOut{}, fmt.Errorf("%w\nprocess %q is still running; use stop_process to end it", err, info.Name)
 			}
 			return nil, startProcessOut{}, err
 		}

@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"ngodingmcp/internal/gitutil"
 	"ngodingmcp/internal/workspace"
 )
 
@@ -129,19 +130,8 @@ func (g *Git) paths(rel string) ([]string, error) {
 }
 
 // validRef accepts ordinary revision names only, so a ref can never be read
-// as an option or a range with side effects.
-func validRef(ref string) error {
-	if strings.HasPrefix(ref, "-") || len(ref) > 100 {
-		return fmt.Errorf("invalid ref %q", ref)
-	}
-	for _, c := range ref {
-		ok := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._/-~^@", c)
-		if !ok {
-			return fmt.Errorf("invalid ref %q", ref)
-		}
-	}
-	return nil
-}
+// as an option or a range with side effects (see internal/gitutil).
+func validRef(ref string) error { return gitutil.ValidRef(ref) }
 
 func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 	bin, err := exec.LookPath("git")
@@ -150,6 +140,9 @@ func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 	}
 	if ctx == nil {
 		ctx = context.Background()
+	}
+	if err := gitutil.CheckLocalConfig(ctx, g.ws.Root()); err != nil {
+		return Result{}, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, g.timeout)
 	defer cancel()
@@ -171,7 +164,8 @@ func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 	// comparing plain files, so check for a work tree first.
 	probe := exec.CommandContext(ctx, bin, "rev-parse", "--is-inside-work-tree")
 	probe.Dir = g.ws.Root()
-	probe.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	probe.Env = append(gitutil.SanitizeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	probe.WaitDelay = 5 * time.Second
 	if out, err := probe.Output(); err != nil || strings.TrimSpace(string(out)) != "true" {
 		if ctx.Err() == context.DeadlineExceeded {
 			return Result{}, fmt.Errorf("git %s timed out after %s", args[0], g.timeout)
@@ -181,7 +175,8 @@ func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 
 	cmd := exec.CommandContext(ctx, bin, full...)
 	cmd.Dir = g.ws.Root()
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat", "LC_ALL=C")
+	cmd.Env = append(gitutil.SanitizeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat", "LC_ALL=C")
+	cmd.WaitDelay = 5 * time.Second
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

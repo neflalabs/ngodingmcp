@@ -4,7 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"sync"
 )
+
+// updateMu serializes read-modify-write cycles in this process (TUI toggles,
+// Web UI workspace switches, service env bootstrap), so two concurrent
+// updates cannot clobber each other's fields.
+var updateMu sync.Mutex
 
 // SavedWorkspace is one entry of the Web UI workspace selector. Settings that
 // are left empty (nil or zero) inherit the global defaults the server was
@@ -26,6 +32,8 @@ type SavedWorkspace struct {
 // continue when the file exists but cannot be parsed, so a damaged file is
 // never silently replaced by an almost empty one.
 func Update(fn func(*Config)) error {
+	updateMu.Lock()
+	defer updateMu.Unlock()
 	p, err := Path()
 	if err != nil {
 		return err

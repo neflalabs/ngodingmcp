@@ -49,8 +49,12 @@ menimpa keduanya: **flag > environment > config.json**.
 | `--download-allow-host` | `NGODINGMCP_DOWNLOAD_ALLOW_HOSTS` | kosong (semua host publik) |
 | `--download-max-bytes` | `NGODINGMCP_DOWNLOAD_MAX_BYTES` | `20971520` (20 MiB) |
 | `--upload-max-bytes` | `NGODINGMCP_UPLOAD_MAX_BYTES` | `20971520` (20 MiB per file) |
+| `--public-url` | `NGODINGMCP_PUBLIC_URL` | kosong (issuer diturunkan dari header `Host`) |
+| `--trusted-proxy` | `NGODINGMCP_TRUSTED_PROXIES` | `loopback` (peer yang `X-Forwarded-Proto`-nya dipercaya) |
+| `--oauth` | `NGODINGMCP_OAUTH` | `true` (OAuth aktif; `--oauth=false` mematikan) |
 
 Penjelasan run/allowlist: [run-and-processes.md](run-and-processes.md).
+Penjelasan OAuth: [oauth.md](oauth.md).
 Penjelasan download: [tools.md](tools.md#download_file).
 
 ## `config.json`
@@ -60,6 +64,25 @@ Lokasi: `~/.config/ngodingmcp/config.json`.
 - Menyimpan setting TUI (root, address, token, toggle) dan daftar workspace dari
   Web UI (field `workspaces`). Workspace terakhir yang dibuka di Web UI jadi root
   default di start berikutnya.
+- Field `publicUrl`: URL publik absolut untuk issuer OAuth (misal
+  `https://mcp.example.com`). Field `oauth`: `false` mematikan embedded
+  authorization server (mode static token only). Field `trustedProxies`: daftar
+  peer yang `X-Forwarded-Proto`-nya dipercaya saat derivasi issuer (array string;
+  keyword `loopback`/`private`/`none`, atau CIDR/IP). Ketiganya opsional; `oauth`
+  yang tidak diisi dianggap `true`, `trustedProxies` yang kosong dianggap `loopback`.
+  Semua setting persistent TUI ini (addr, token, run/sensitive/download) juga bisa
+  di-edit dari Web UI — tombol **⚙ Settings** di topbar — dengan isi yang sama: kolom
+  `addr` (`host:port`), `token` (kosong = generate acak saat start), checkbox
+  `runEnabled`, `allowSensitive` (berlaku langsung, tanpa restart), `allowDownload`,
+  `publicUrl`, `trustedProxies`, `oauth`.
+- Validasi server menolak `addr` tidak valid (`host:port`, port 1–65535) dan token
+  yang memuat karakter berbahaya (`;`, `,`, `"`, `\`) atau karakter kontrol.
+  Perubahan tersimpan ke `config.json` dan berlaku setelah restart — kecuali
+  `allowSensitive` yang langsung berlaku; environment dan flag tetap menimpa file saat start. Pola non-interaktif tetap
+  tersedia: `ngodingmcp serve --public-url ... --trusted-proxy ... --oauth=false`,
+  atau file env service.
+- Signing key dan client OAuth terdaftar disimpan di `~/.config/ngodingmcp/oauth.json`
+  (bukan di `config.json`). Lihat [oauth.md](oauth.md).
 - Dipakai lagi pada run berikutnya, termasuk `ngodingmcp serve` tanpa flag.
 - Untuk run policy, config hanya menyimpan flag enable (`{"run": {"enabled": true}}`);
   allowlist tidak bisa diubah dari sini.

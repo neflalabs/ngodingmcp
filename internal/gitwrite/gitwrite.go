@@ -25,6 +25,7 @@ import (
 	"strings"
 	"time"
 
+	"ngodingmcp/internal/gitutil"
 	"ngodingmcp/internal/workspace"
 )
 
@@ -364,6 +365,9 @@ type runOpts struct {
 	// only uses credential helpers and ssh settings from the user's global
 	// or system git config (see networkSetup).
 	network bool
+	// noGuard skips the repository-config guard. Only ever set for the
+	// guard's own probe command.
+	noGuard bool
 }
 
 // run runs one git command and returns stdout and stderr. Error messages
@@ -377,17 +381,25 @@ func (g *Git) run(ctx context.Context, o runOpts, args ...string) (string, strin
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if !o.noGuard {
+		if err := gitutil.CheckLocalConfig(ctx, g.ws.Root()); err != nil {
+			return "", "", err
+		}
+	}
 	timeout := g.timeout
-	env := append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GIT_EDITOR=true", "LC_ALL=C")
-	var netConfig []string
 	if o.network {
 		timeout = g.remoteTimeout
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	env := append(gitutil.SanitizeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_PAGER=cat", "GIT_EDITOR=true", "LC_ALL=C")
+	var netConfig []string
+	if o.network {
 		cfg, netEnv := g.networkSetup(ctx)
 		netConfig = cfg
 		env = append(env, netEnv...)
 	}
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	full := []string{
 		"--no-pager",
@@ -409,6 +421,9 @@ func (g *Git) run(ctx context.Context, o runOpts, args ...string) (string, strin
 	}
 	if o.network {
 		detach(cmd)
+	}
+	if cmd.WaitDelay == 0 {
+		cmd.WaitDelay = 5 * time.Second
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -477,18 +492,7 @@ func ValidBranch(name string) error {
 }
 
 // validRef accepts ordinary revision names only (same rule as gitread).
-func validRef(ref string) error {
-	if strings.HasPrefix(ref, "-") || len(ref) > 100 {
-		return fmt.Errorf("invalid ref %q", ref)
-	}
-	for _, c := range ref {
-		ok := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.ContainsRune("._/-~^@", c)
-		if !ok {
-			return fmt.Errorf("invalid ref %q", ref)
-		}
-	}
-	return nil
-}
+func validRef(ref string) error { return gitutil.ValidRef(ref) }
 
 func validIdentity(name, email string) error {
 	if name == "" || email == "" {

@@ -135,13 +135,11 @@ func activityTarget(raw json.RawMessage) string {
 	var target string
 	switch {
 	case str("command") != "":
+		// Command arguments may carry secrets (tokens, passwords) that must
+		// never reach the activity log; keep only argv[0] and the count.
 		target = str("command")
-		if extra, ok := args["args"].([]any); ok {
-			for _, a := range extra {
-				if s, ok := a.(string); ok {
-					target += " " + s
-				}
-			}
+		if extra, ok := args["args"].([]any); ok && len(extra) > 0 {
+			target += fmt.Sprintf(" (+%d args)", len(extra))
 		}
 	case str("source_url") != "":
 		target = urlHost(str("source_url")) + " → " + str("path")

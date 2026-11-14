@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NgodingMCP · Authorize</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/theme.js"></script>
+</head>
+<body class="login-body">
+  <button type="button" class="ghost theme-toggle login-theme" data-theme-toggle title="Toggle theme">☾</button>
+  <form class="login-card consent-card" method="post" action="/oauth/authorize">
+    <div class="brand">Ngoding<span>MCP</span></div>
+    <p class="muted"><strong>{{.ClientName}}</strong> wants to connect to this server.</p>
+
+    <dl class="consent-detail">
+      <dt>Client</dt><dd>{{.ClientName}}</dd>
+      <dt>Redirect</dt><dd class="wrap">{{.RedirectURI}}</dd>
+      <dt>Scope</dt><dd>{{.Scope}}</dd>
+    </dl>
+
+    <p class="consent-note">Only approve if you trust this app. Approving grants it full access to the tools on this server.</p>
+
+    {{if .NeedsToken}}
+    <input type="password" name="token" id="token" placeholder="Server token" autocomplete="current-password" autofocus>
+    <p class="error{{if .Error}} visible{{end}}" id="error">Invalid token. Try again.</p>
+    {{else}}
+    <p class="error" id="error" style="display:none"></p>
+    {{end}}
+
+    <input type="hidden" name="client_id" value="{{.ClientID}}">
+    <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
+    <input type="hidden" name="state" value="{{.State}}">
+    <input type="hidden" name="scope" value="{{.Scope}}">
+    <input type="hidden" name="code_challenge" value="{{.CodeChallenge}}">
+    <input type="hidden" name="resource" value="{{.Resource}}">
+    {{if .CSRFToken}}<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">{{end}}
+
+    <div class="consent-actions">
+      <button class="primary" type="submit" name="decision" value="approve">Approve</button>
+      <button class="ghost" type="submit" name="decision" value="deny">Deny</button>
+    </div>
+  </form>
+</body>
+</html>

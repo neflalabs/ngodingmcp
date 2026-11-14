@@ -127,7 +127,11 @@ func cmdInstall(ctx context.Context, m serviceManager, out, errOut io.Writer) in
 	default:
 		fmt.Fprintln(out, "NgodingMCP service started and enabled.")
 	}
-	st := m.Status(ctx)
+	// Status gets its own short timeout instead of inheriting whatever is
+	// left of the 60s install budget.
+	statusCtx, statusCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer statusCancel()
+	st := m.Status(statusCtx)
 	printAddresses(out, res.Addr, st)
 	fmt.Fprintf(out, "  token:     NGODINGMCP_TOKEN in %s\n", m.EnvFile())
 	for _, w := range st.Warnings {

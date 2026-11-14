@@ -8,16 +8,16 @@ import (
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/http"
+	"ngodingmcp/internal/auth"
+	"ngodingmcp/internal/procman"
+	"ngodingmcp/internal/workspace"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"ngodingmcp/internal/auth"
-	"ngodingmcp/internal/buildinfo"
-	"ngodingmcp/internal/procman"
-	"ngodingmcp/internal/workspace"
 )
 
 //go:embed web/*
@@ -37,7 +37,21 @@ type UI struct {
 	// uploadMax caps each uploaded file; logger receives upload activity.
 	uploadMax int64
 	logger    *slog.Logger
+
+	loginMu       sync.Mutex
+	loginFailures map[string]*loginAttempts
 }
+
+// loginAttempts tracks consecutive failed logins from one IP for throttling.
+type loginAttempts struct {
+	failures int
+	window   time.Time // when the current penalty window expires
+}
+
+const (
+	loginMaxFailures = 5
+	loginWindow      = time.Minute
+)
 
 // New returns a UI backed by ws.
 func New(ws *workspace.Workspace, a *auth.Authenticator, version string) *UI {
@@ -75,22 +89,78 @@ func (u *UI) LoginPage(w http.ResponseWriter, r *http.Request) {
 	u.serveFile(w, "login.html")
 }
 
+// loginThrottled reports whether ip is in a penalty window for repeated
+// failed logins.
+func (u *UI) loginThrottled(ip string) bool {
+	u.loginMu.Lock()
+	defer u.loginMu.Unlock()
+	now := time.Now()
+	for k, v := range u.loginFailures {
+		if now.After(v.window) {
+			delete(u.loginFailures, k)
+		}
+	}
+	v, ok := u.loginFailures[ip]
+	return ok && now.Before(v.window) && v.failures >= loginMaxFailures
+}
+
+func (u *UI) recordLoginFailure(ip string) {
+	u.loginMu.Lock()
+	defer u.loginMu.Unlock()
+	now := time.Now()
+	v, ok := u.loginFailures[ip]
+	if !ok || now.After(v.window) {
+		v = &loginAttempts{window: now.Add(loginWindow)}
+		u.loginFailures[ip] = v
+	}
+	v.failures++
+	// Cap the map so it cannot grow without bound under spoofed IPs.
+	if len(u.loginFailures) > 4096 {
+		u.loginFailures = map[string]*loginAttempts{ip: v}
+	}
+}
+
+func (u *UI) clearLoginFailures(ip string) {
+	u.loginMu.Lock()
+	defer u.loginMu.Unlock()
+	delete(u.loginFailures, ip)
+}
+
+// clientIP returns the apparent client IP, honoring nothing beyond the
+// direct peer (proxy headers are not trusted for throttling).
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // LoginSubmit validates the submitted token and sets the session cookie.
 func (u *UI) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
+	ip := clientIP(r)
+	if u.loginThrottled(ip) {
+		http.Error(w, "too many failed logins; try again in a minute", http.StatusTooManyRequests)
+		return
+	}
 	if !u.auth.Validate(strings.TrimSpace(r.PostFormValue("token"))) {
+		u.recordLoginFailure(ip)
 		http.Redirect(w, r, "/login?error=1", http.StatusSeeOther)
 		return
 	}
+	u.clearLoginFailures(ip)
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 	http.SetCookie(w, &http.Cookie{
 		Name:     u.auth.CookieName(),
 		Value:    strings.TrimSpace(r.PostFormValue("token")),
 		Path:     "/",
 		MaxAge:   cookieMaxAge,
 		HttpOnly: true,
+		Secure:   secure,
 		SameSite: http.SameSiteStrictMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -126,8 +196,18 @@ func (u *UI) serveFile(w http.ResponseWriter, name string) {
 func (u *UI) API() http.Handler {
 	top := http.NewServeMux()
 	u.addWorkspaceRoutes(top)
+	u.addSettingsRoutes(top)
 	top.Handle("/", u.holdWorkspace(u.filesAPI()))
 	return top
+}
+
+func (u *UI) addSettingsRoutes(mux *http.ServeMux) {
+	// Settings only reads/writes config.json (and flips the sensitive
+	// guard on the live workspace); it never touches workspace files, so
+	// it must NOT be mounted under holdWorkspace — a request that holds
+	// the workspace gate and then asks for a write lock deadlocks.
+	mux.HandleFunc("GET /settings", u.handleGetSettings)
+	mux.HandleFunc("PUT /settings", u.handlePutSettings)
 }
 
 func (u *UI) filesAPI() http.Handler {
@@ -154,278 +234,14 @@ func (u *UI) filesAPI() http.Handler {
 	return mux
 }
 
-func (u *UI) handleStats(w http.ResponseWriter, r *http.Request) {
-	st, err := u.ws.Stats()
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, st)
-}
-
-func (u *UI) handleValidate(w http.ResponseWriter, r *http.Request) {
-	p := r.URL.Query().Get("path")
-	res, err := u.ws.ValidateSyntax(p)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
-}
-
-type searchReplaceReq struct {
-	Path        string `json:"path"`
-	Pattern     string `json:"pattern"`
-	Replacement string `json:"replacement"`
-	Glob        string `json:"glob"`
-	DryRun      bool   `json:"dryRun"`
-	MaxFiles    int    `json:"maxFiles"`
-}
-
-func (u *UI) handleSearchReplace(w http.ResponseWriter, r *http.Request) {
-	var req searchReplaceReq
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	res, err := u.ws.SearchReplace(req.Path, req.Pattern, req.Replacement, req.Glob, req.DryRun, req.MaxFiles)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
-}
-
-type infoResponse struct {
-	Root       string `json:"root"`
-	Version    string `json:"version"`
-	Built      string `json:"built,omitempty"` // RFC 3339 build time of the binary
-	MaxRead    int64  `json:"maxReadBytes"`
-	Processes  bool   `json:"processesEnabled"`
-	UploadMax  int64  `json:"uploadMaxBytes"`
-	Workspaces bool   `json:"workspacesEnabled"`
-}
-
-func (u *UI) handleInfo(w http.ResponseWriter, r *http.Request) {
-	var built string
-	if t := buildinfo.Get().BuildTime; !t.IsZero() {
-		built = t.Format(time.RFC3339)
-	}
-	writeJSON(w, http.StatusOK, infoResponse{
-		Root:       u.ws.Root(),
-		Version:    u.version,
-		Built:      built,
-		MaxRead:    u.ws.MaxRead(),
-		Processes:  u.procs != nil,
-		UploadMax:  u.uploadLimit(),
-		Workspaces: u.workspaces != nil,
-	})
-}
-
-// --- background processes --------------------------------------------------
-
-func (u *UI) handleProcesses(w http.ResponseWriter, r *http.Request) {
-	procs := u.procs.List()
-	if procs == nil {
-		procs = []procman.Info{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"processes": procs})
-}
-
-type stopProcessRequest struct {
-	Wait         *bool `json:"wait"`
-	GraceSeconds int   `json:"graceSeconds"`
-}
-
-func (u *UI) handleStopProcess(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "missing process name"})
-		return
-	}
-	var req stopProcessRequest
-	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	grace := time.Duration(req.GraceSeconds) * time.Second
-	wait := req.Wait != nil && *req.Wait
-	info, err := u.procs.Stop(name, grace, wait)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, info)
-}
-
 // maxLogTail caps how many lines one logs request returns.
 const maxLogTail = 2000
-
-// handleProcessLogs returns a process's output. Pass after=<nextSeq> from the
-// previous response to receive only newer lines; tail limits the first read.
-func (u *UI) handleProcessLogs(w http.ResponseWriter, r *http.Request) {
-	name := r.PathValue("name")
-	q := r.URL.Query()
-	tail, err := queryInt(q.Get("tail"), 200)
-	if err != nil || tail < 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "tail must be a non-negative integer"})
-		return
-	}
-	if tail > maxLogTail {
-		tail = maxLogTail
-	}
-	after, err := queryInt(q.Get("after"), 0)
-	if err != nil || after < 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "after must be a non-negative integer"})
-		return
-	}
-	info, logs, err := u.procs.Logs(name, tail, int64(after))
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if logs.Lines == nil {
-		logs.Lines = []procman.LogLine{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"process": info, "logs": logs})
-}
-
-func (u *UI) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
-	var req stopProcessRequest
-	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	info, err := u.procs.Restart(r.PathValue("name"), time.Duration(req.GraceSeconds)*time.Second)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, info)
-}
 
 func queryInt(s string, def int) (int, error) {
 	if s == "" {
 		return def, nil
 	}
 	return strconv.Atoi(s)
-}
-
-func (u *UI) handleStopAllProcesses(w http.ResponseWriter, r *http.Request) {
-	var req stopProcessRequest
-	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	grace := time.Duration(req.GraceSeconds) * time.Second
-	procs := u.procs.StopAll(r.Context(), grace)
-	if procs == nil {
-		procs = []procman.Info{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"processes": procs})
-}
-
-func (u *UI) handleTree(w http.ResponseWriter, r *http.Request) {
-	dir := r.URL.Query().Get("path")
-	recursive := r.URL.Query().Get("recursive") == "1"
-	entries, err := u.ws.ListFiles(dir, recursive)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if entries == nil {
-		entries = []workspace.Entry{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": dir, "entries": entries})
-}
-
-func (u *UI) handleGetFile(w http.ResponseWriter, r *http.Request) {
-	p := r.URL.Query().Get("path")
-	res, err := u.ws.ReadFile(p, 0, 0)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, res)
-}
-
-type putFileRequest struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}
-
-func (u *UI) handlePutFile(w http.ResponseWriter, r *http.Request) {
-	var req putFileRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	p, n, err := u.ws.WriteFile(req.Path, req.Content)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": p, "bytes": n})
-}
-
-func (u *UI) handleDelete(w http.ResponseWriter, r *http.Request) {
-	p := r.URL.Query().Get("path")
-	recursive := r.URL.Query().Get("recursive") == "1"
-	if err := u.ws.Delete(p, recursive); err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"deleted": p})
-}
-
-type pathRequest struct {
-	Path string `json:"path"`
-}
-
-func (u *UI) handleMkdir(w http.ResponseWriter, r *http.Request) {
-	var req pathRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	p, err := u.ws.Mkdir(req.Path)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"path": p})
-}
-
-type renameRequest struct {
-	From string `json:"from"`
-	To   string `json:"to"`
-}
-
-func (u *UI) handleRename(w http.ResponseWriter, r *http.Request) {
-	var req renameRequest
-	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	p, err := u.ws.Rename(req.From, req.To)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"path": p})
-}
-
-func (u *UI) handleSearch(w http.ResponseWriter, r *http.Request) {
-	q := r.URL.Query()
-	matches, err := u.ws.SearchText(q.Get("path"), q.Get("q"), q.Get("glob"), 200)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	if matches == nil {
-		matches = []workspace.Match{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"matches": matches})
 }
 
 func decodeJSON(r *http.Request, v any) error {

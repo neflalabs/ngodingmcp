@@ -252,6 +252,9 @@ func (m *Manager) waitReady(ctx context.Context, addr string) error {
 	tries := int(m.ReadyTimeout/step) + 1
 	state := ""
 	for i := 0; i < tries; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if i > 0 {
 			m.Sleep(step)
 		}
@@ -298,7 +301,10 @@ func (m *Manager) writeUnit() (UnitChange, string, error) {
 // service share it; with none saved, a new token is made and saved to both.
 // An existing file is never rewritten, only tightened to 0600.
 func (m *Manager) ensureEnvFile() (bool, error) {
-	if info, err := os.Stat(m.EnvPath); err == nil {
+	if info, err := os.Lstat(m.EnvPath); err == nil {
+		if !info.Mode().IsRegular() {
+			return false, fmt.Errorf("secure %s: not a regular file", m.EnvPath)
+		}
 		if info.Mode().Perm()&0o077 != 0 {
 			if err := os.Chmod(m.EnvPath, 0o600); err != nil {
 				return false, fmt.Errorf("secure %s: %w", m.EnvPath, err)
@@ -333,6 +339,11 @@ func (m *Manager) ensureEnvFile() (bool, error) {
 		return false, fmt.Errorf("create %s: %w", m.EnvPath, err)
 	}
 	if _, err := f.WriteString(envHeader + "\n" + envLine("NGODINGMCP_TOKEN", token)); err != nil {
+		_ = f.Close()
+		_ = os.Remove(m.EnvPath)
+		return false, fmt.Errorf("write %s: %w", m.EnvPath, err)
+	}
+	if err := f.Sync(); err != nil {
 		_ = f.Close()
 		_ = os.Remove(m.EnvPath)
 		return false, fmt.Errorf("write %s: %w", m.EnvPath, err)

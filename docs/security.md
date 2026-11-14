@@ -3,11 +3,23 @@
 ## Jaringan dan auth
 
 - Auth token untuk MCP dan REST (`Authorization: Bearer` atau `X-API-Key`), login
-  cookie untuk browser. OAuth belum didukung.
+  cookie untuk browser.
+- `/mcp` juga mendukung OAuth 2.1 sesuai MCP spec: resource server + authorization
+  server embedded. Access token ES256 terikat audience ke server ini (RFC 8707),
+  PKCE S256 wajib untuk code exchange, refresh token rotasi setiap dipakai.
+  Refresh token hanya di memori; restart server = consent ulang. Detail:
+  [oauth.md](oauth.md).
+- OAuth tetap menggunakan token statis sebagai jalur autentikasi tambahan.
 - Token dikirim sebagai header biasa. Jalankan di `localhost`, atau taruh di
-  belakang reverse proxy TLS kalau diakses dari jaringan lain.
+  belakang reverse proxy TLS kalau diakses dari jaringan lain (lihat `trusted-proxy`
+  di [oauth.md](oauth.md)).
 - Token tersimpan plaintext di `config.json` dan file env service, keduanya dengan
   mode `0600`.
+- Proses yang di-spawn tool (`run_command`, background process) menerima environment
+  yang sudah disaring: variabel dengan nama mengandung `TOKEN`, `SECRET`, `PASSWORD`,
+  `PASSWD`, `PASSPHRASE`, `API_KEY`, `ACCESS_KEY`, `PRIVATE_KEY`, `CREDENTIAL`,
+  `AUTH_TOKEN`, dan sejenisnya dihapus (mis. `NGODINGMCP_TOKEN`, `GITHUB_TOKEN`,
+  `AWS_*`). `PATH`, `HOME`, `SSH_AUTH_SOCK` tetap ada untuk toolchain.
 
 ## Sandbox workspace
 
@@ -26,10 +38,15 @@ Diblokir secara default:
 
 - `.env` dan `.env.*` (kecuali template seperti `.env.example`, `.env.sample`,
   `.env.template`, `.env.dist`);
-- folder `.git`, `.ssh`, `.aws`, `.gnupg`;
+- `.envrc` dan varian `.env.*` lainnya;
+- folder `.git`, `.ssh`, `.aws`, `.gnupg`, `.kube`, `.docker`;
 - file `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `.htpasswd`,
-  `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519`;
-- ekstensi `.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`.
+  `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519`, `.pgpass`, `.my.cnf`, `.dockercfg`,
+  `.terraformrc`, `credentials`, `credentials.json`, `kubeconfig`;
+- ekstensi `.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`, `.tfvars`,
+  `.tfstate`, `.p8`, `.gpg`, `.kdbx`;
+- symlink di dalam root yang menunjuk ke file/folder sensitif ikut diblokir
+  (nama netral seperti `link.txt -> .env` tidak bisa dipakai membaca isinya).
 
 File ini tidak bisa dibaca/ditulis/diedit, disembunyikan dari list, search, stats,
 dan count, dan delete rekursif ditolak kalau foldernya berisi file tersebut.

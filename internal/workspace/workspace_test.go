@@ -727,3 +727,141 @@ func TestCountTokens_EdgeCases(t *testing.T) {
 		t.Fatalf("binary token count mismatch: %+v", counts[0])
 	}
 }
+
+func TestWalkersSkipSymlinksEscapingRoot(t *testing.T) {
+	ws := newTestWorkspace(t)
+	outside := t.TempDir()
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("TOPSECRET word sword\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(ws.Root(), "link.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	mustWrite(t, ws, "real.txt", "sword\n")
+
+	matches, err := ws.SearchText("", "sword", "*.txt", 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range matches {
+		if m.Path == "link.txt" {
+			t.Fatalf("SearchText read a symlink pointing outside the root: %+v", m)
+		}
+	}
+	found := false
+	for _, m := range matches {
+		if m.Path == "real.txt" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("SearchText missed real.txt: %+v", matches)
+	}
+
+	st, err := ws.Stats()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = st // Stats walked the whole tree; it must not have errored on the link
+	tc, err := ws.CountTokens([]string{"."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tc) != 1 || tc[0].Lines != 1 {
+		t.Fatalf("CountTokens = %+v, want one entry with 1 line (link must be skipped)", tc)
+	}
+
+	res, err := ws.SearchReplace(".", "sword", "staff", "*.txt", false, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range res.Files {
+		if f.Path == "link.txt" {
+			t.Fatalf("SearchReplace planned to rewrite a symlink escaping the root")
+		}
+	}
+	data, err := os.ReadFile(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "TOPSECRET word sword\n" {
+		t.Fatalf("outside-root file was rewritten: %q", data)
+	}
+}
+
+func TestWriteFilePreservesMode(t *testing.T) {
+	ws := newTestWorkspace(t)
+	p := filepath.Join(ws.Root(), "keep.txt")
+	if err := os.WriteFile(p, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ws.WriteFile("keep.txt", "y"); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := fi.Mode().Perm(); got != 0o600 {
+		t.Fatalf("mode = %04o, want 0600", got)
+	}
+}
+
+func TestSensitiveSymlinkTargetRejected(t *testing.T) {
+	ws := newTestWorkspace(t)
+	p := filepath.Join(ws.Root(), ".env")
+	if err := os.WriteFile(p, []byte("TOPSECRET=1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(p, filepath.Join(ws.Root(), "link.txt")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if _, err := ws.ReadFile("link.txt", 0, 0); !errors.Is(err, ErrSensitive) {
+		t.Fatalf("read via neutral symlink err = %v, want ErrSensitive", err)
+	}
+	if _, _, err := ws.WriteFile("link.txt", "x"); !errors.Is(err, ErrSensitive) {
+		t.Fatalf("write via neutral symlink err = %v, want ErrSensitive", err)
+	}
+
+	// A directory symlink to a sensitive directory must not leak its tree.
+	sshDir := filepath.Join(ws.Root(), ".ssh")
+	if err := os.MkdirAll(sshDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sshDir, "id_rsa"), []byte("PRIVATE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(sshDir, filepath.Join(ws.Root(), "notes")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if _, err := ws.ReadFile("notes/id_rsa", 0, 0); !errors.Is(err, ErrSensitive) {
+		t.Fatalf("read via dir symlink err = %v, want ErrSensitive", err)
+	}
+
+	// With the guard explicitly off, the same path is allowed.
+	ws.SetAllowSensitive(true)
+	if _, err := ws.ReadFile("notes/id_rsa", 0, 0); err != nil {
+		t.Fatalf("allow-sensitive read err = %v, want nil", err)
+	}
+}
+
+func TestSensitiveNameCoverage(t *testing.T) {
+	ws := newTestWorkspace(t)
+	for _, rel := range []string{
+		".envrc", "credentials.json", "credentials", "kubeconfig",
+		"app.tfvars", "terraform.tfstate", ".pgpass", ".my.cnf",
+		".kube/config", ".docker/config.json",
+	} {
+		full := filepath.Join(ws.Root(), filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("secret\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ws.ReadFile(rel, 0, 0); !errors.Is(err, ErrSensitive) {
+			t.Errorf("ReadFile(%q) err = %v, want ErrSensitive", rel, err)
+		}
+	}
+}

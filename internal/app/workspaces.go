@@ -271,6 +271,14 @@ func (m *workspaceManager) Switch(ctx context.Context, name string, stopProcesse
 	defer cancel()
 	var stopped []string
 	err = m.ws.Switch(ctx, settings, func() error {
+		// during() runs once the workspace is quiesced, so re-check for
+		// processes that appeared between the check above and now;
+		// without this they would be stopped without consent.
+		if !stopProcesses {
+			if running := m.runningProcesses(); len(running) > 0 {
+				return &webui.ProcessesRunningError{Names: running}
+			}
+		}
 		// Nothing can use the workspace now: stop and forget the old
 		// workspace's processes and point the runner at the new root.
 		if m.procs != nil {
