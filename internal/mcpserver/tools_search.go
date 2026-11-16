@@ -14,6 +14,10 @@ import (
 	"ngodingmcp/internal/workspace"
 )
 
+// maxSearchOutputBytes bounds the text a single search_text call returns
+// (hits are also clipped per line by workspace.MaxMatchTextBytes).
+const maxSearchOutputBytes = 64 * 1024
+
 // addSearchTools registers search_text and search_and_replace.
 func addSearchTools(s *mcp.Server, ws *workspace.Workspace) {
 	addSearchText(s, ws)
@@ -44,13 +48,19 @@ func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
 			return nil, searchTextOut{}, err
 		}
 		var b strings.Builder
-		for _, m := range matches {
+		kept := matches
+		for i, m := range matches {
+			if b.Len() >= maxSearchOutputBytes {
+				fmt.Fprintf(&b, "... output truncated at %d matches of %d; narrow with path or glob\n", i, len(matches))
+				kept = matches[:i]
+				break
+			}
 			fmt.Fprintf(&b, "%s:%d: %s\n", m.Path, m.Line, m.Text)
 		}
 		if b.Len() == 0 {
 			b.WriteString("no matches\n")
 		}
-		return textResult(b.String()), searchTextOut{Matches: matches}, nil
+		return textResult(b.String()), searchTextOut{Matches: kept}, nil
 	})
 }
 

@@ -21,6 +21,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 )
 
 var (
@@ -153,6 +154,34 @@ func (w *Workspace) skipBlocked(base, p string, d fs.DirEntry) (bool, error) {
 		return true, filepath.SkipDir
 	}
 	return true, nil
+}
+
+// heavyDirs are dependency and build-cache directories that are skipped by the
+// bulk walkers (search, search_and_replace, stats, count_tokens). They hold
+// third-party or generated files that dominate walk time and drown out project
+// code. The names are unambiguous on purpose: ordinary source folders such as
+// build/, dist/ or vendor/ are NOT skipped. Pointing a walker directly at one
+// of these directories (path=node_modules/foo) still works, because the walk
+// root itself is never skipped.
+var heavyDirs = map[string]struct{}{
+	"node_modules":     {},
+	"bower_components": {},
+	".next":            {},
+	".nuxt":            {},
+	".svelte-kit":      {},
+	".turbo":           {},
+	".cache":           {},
+	".venv":            {},
+	"__pycache__":      {},
+}
+
+// skipHeavy reports whether the walker should skip the directory d below base.
+func skipHeavy(base, p string, d fs.DirEntry) bool {
+	if p == base || !d.IsDir() {
+		return false
+	}
+	_, heavy := heavyDirs[d.Name()]
+	return heavy
 }
 
 func (w *Workspace) checkSymlinkEscape(full string) error {
@@ -526,6 +555,46 @@ type Match struct {
 	Text string `json:"text"`
 }
 
+// MaxMatchTextBytes caps the text of a single search hit. Minified bundles and
+// source maps have lines of hundreds of kilobytes; without a cap a handful of
+// hits can produce megabytes of output.
+const MaxMatchTextBytes = 300
+
+// clipAroundMatch shortens line to roughly max bytes, keeping the first match
+// of re visible and marking cut ends with an ellipsis. Short lines are
+// returned unchanged. Cuts never split a UTF-8 sequence.
+func clipAroundMatch(re *regexp.Regexp, line string, max int) string {
+	if len(line) <= max {
+		return line
+	}
+	start := 0
+	if loc := re.FindStringIndex(line); loc != nil {
+		start = loc[0] - max/3
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + max
+	if end > len(line) {
+		end = len(line)
+		start = end - max
+	}
+	for start > 0 && start < len(line) && !utf8.RuneStart(line[start]) {
+		start++
+	}
+	for end < len(line) && !utf8.RuneStart(line[end]) {
+		end--
+	}
+	out := line[start:end]
+	if start > 0 {
+		out = "…" + out
+	}
+	if end < len(line) {
+		out += "…"
+	}
+	return out
+}
+
 // SearchText searches for pattern (a Go regular expression) inside rel,
 // optionally filtering paths with a glob.
 func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Match, error) {
@@ -559,6 +628,9 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
 		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
+		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
 				return filepath.SkipDir
@@ -589,7 +661,8 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 		}
 		for i, line := range strings.Split(string(data), "\n") {
 			if re.MatchString(line) {
-				matches = append(matches, Match{Path: relp, Line: i + 1, Text: strings.TrimRight(line, "\r")})
+				text := strings.TrimRight(line, "\r")
+				matches = append(matches, Match{Path: relp, Line: i + 1, Text: clipAroundMatch(re, text, MaxMatchTextBytes)})
 				if len(matches) >= maxResults {
 					return stop
 				}
@@ -789,6 +862,9 @@ func (w *Workspace) Stats() (WorkspaceStats, error) {
 		if skip, err := w.skipBlocked(w.Root(), p, d); skip {
 			return err
 		}
+		if skipHeavy(w.Root(), p, d) {
+			return filepath.SkipDir
+		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
 				return filepath.SkipDir
@@ -921,6 +997,9 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 		}
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
+		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
@@ -1157,6 +1236,9 @@ func (w *Workspace) countOne(rel string) (TokenCount, error) {
 		}
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
+		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
