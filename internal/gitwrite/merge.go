@@ -1,10 +1,10 @@
 package gitwrite
 
 import (
-	"fmt"
-	"errors"
-	"strings"
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 )
 
 // MergeOptions selects what git_merge merges into the current branch.

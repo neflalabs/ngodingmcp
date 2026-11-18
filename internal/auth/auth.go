@@ -14,21 +14,38 @@ import (
 type Authenticator struct {
 	token      string
 	cookieName string
+	sessions   *SessionStore
 }
 
 // New returns an Authenticator for token. cookieName is used by the web UI.
 func New(token, cookieName string) *Authenticator {
-	return &Authenticator{token: token, cookieName: cookieName}
+	return &Authenticator{token: token, cookieName: cookieName, sessions: NewSessionStore()}
 }
 
 // CookieName returns the name of the UI session cookie.
 func (a *Authenticator) CookieName() string { return a.cookieName }
 
+// Sessions returns the session store backing the UI cookie.
+func (a *Authenticator) Sessions() *SessionStore { return a.sessions }
+
 // Validate reports whether the given token is correct.
 func (a *Authenticator) Validate(token string) bool { return a.equal(token) }
 
-// Check reports whether the request carries a valid credential.
-func (a *Authenticator) Check(r *http.Request) bool {
+// StartSession mints a new opaque UI session ID.
+func (a *Authenticator) StartSession() (string, error) { return a.sessions.Create() }
+
+// EndSession revokes the UI session carried by r's cookie, if any.
+func (a *Authenticator) EndSession(r *http.Request) {
+	if c, err := r.Cookie(a.cookieName); err == nil {
+		a.sessions.Revoke(c.Value)
+	}
+}
+
+// CheckHeader reports whether the request carries a valid machine
+// credential (Authorization: Bearer or X-API-Key). The UI session cookie is
+// deliberately NOT accepted here, so a leaked cookie cannot be replayed
+// against /mcp.
+func (a *Authenticator) CheckHeader(r *http.Request) bool {
 	if h := r.Header.Get("Authorization"); h != "" {
 		if len(h) > 7 && strings.EqualFold(h[:7], "bearer ") {
 			if a.equal(strings.TrimSpace(h[7:])) {
@@ -39,7 +56,15 @@ func (a *Authenticator) Check(r *http.Request) bool {
 	if k := r.Header.Get("X-API-Key"); a.equal(k) {
 		return true
 	}
-	if c, err := r.Cookie(a.cookieName); err == nil && a.equal(c.Value) {
+	return false
+}
+
+// Check reports whether the request carries a valid credential.
+func (a *Authenticator) Check(r *http.Request) bool {
+	if a.CheckHeader(r) {
+		return true
+	}
+	if c, err := r.Cookie(a.cookieName); err == nil && a.sessions.Valid(c.Value) {
 		return true
 	}
 	return false

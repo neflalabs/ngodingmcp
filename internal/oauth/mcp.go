@@ -33,7 +33,9 @@ const (
 )
 
 func (s *Server) acceptMCP(r *http.Request) mcpOutcome {
-	if s.auth != nil && s.auth.Check(r) {
+	// Machine credentials only: the UI session cookie is not accepted,
+	// so a leaked browser cookie cannot be replayed against /mcp.
+	if s.auth != nil && s.auth.CheckHeader(r) {
 		return mcpAccepted
 	}
 	h := r.Header.Get("Authorization")

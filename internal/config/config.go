@@ -56,6 +56,16 @@ func SplitList(s string) []string {
 	return out
 }
 
+// FirstNonEmpty returns the first non-blank value, or "" if none.
+func FirstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 // Path returns the config file location.
 func Path() (string, error) {
 	dir, err := os.UserConfigDir()

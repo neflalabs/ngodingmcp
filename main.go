@@ -199,23 +199,57 @@ func parseServerFlags(args []string) (*serverOptions, error) {
 
 	saved := config.Load()
 
-	fs.StringVar(&opts.addr, "addr", envOr("NGODINGMCP_ADDR", firstNonEmpty(saved.Addr, "127.0.0.1:8080")), "HTTP listen address")
-	fs.StringVar(&opts.root, "root", envOr("NGODINGMCP_ROOT", firstNonEmpty(saved.Root, filepath.Join(homeDir(), "ngodingmcp-workspace"))), "workspace root directory (created if missing)")
+	fs.StringVar(&opts.addr, "addr", envOr("NGODINGMCP_ADDR", config.FirstNonEmpty(saved.Addr, "127.0.0.1:8080")), "HTTP listen address")
+	fs.StringVar(&opts.root, "root", envOr("NGODINGMCP_ROOT", config.FirstNonEmpty(saved.Root, filepath.Join(homeDir(), "ngodingmcp-workspace"))), "workspace root directory (created if missing)")
 	fs.StringVar(&opts.token, "token", envOr("NGODINGMCP_TOKEN", saved.Token), "shared auth token (generated if empty)")
 	fs.Int64Var(&opts.maxFileBytes, "max-file-bytes", 2<<20, "maximum file size read by tools, in bytes")
-	fs.BoolVar(&opts.allowRun, "allow-run", envBoolFrom("NGODINGMCP_ALLOW_RUN", saved.Run.Enabled), "enable the opt-in run_command and background process tools")
+
+	// Resolve environment-backed defaults strictly: a misspelled or invalid
+	// value aborts startup with the variable named, instead of silently
+	// falling back (e.g. NGODINGMCP_OAUTH=yes used to silently disable
+	// OAuth).
+	allowRun, err := envBoolFrom("NGODINGMCP_ALLOW_RUN", saved.Run.Enabled)
+	if err != nil {
+		return nil, err
+	}
+	runTimeout, err := envDuration("NGODINGMCP_RUN_TIMEOUT", time.Minute)
+	if err != nil {
+		return nil, err
+	}
+	allowSensitive, err := envBoolFrom("NGODINGMCP_ALLOW_SENSITIVE", false)
+	if err != nil {
+		return nil, err
+	}
+	allowDownload, err := envBoolFrom("NGODINGMCP_ALLOW_DOWNLOAD", saved.AllowDownload)
+	if err != nil {
+		return nil, err
+	}
+	downloadMaxBytes, err := envInt64("NGODINGMCP_DOWNLOAD_MAX_BYTES", 20<<20)
+	if err != nil {
+		return nil, err
+	}
+	uploadMaxBytes, err := envInt64("NGODINGMCP_UPLOAD_MAX_BYTES", 20<<20)
+	if err != nil {
+		return nil, err
+	}
+	oauthEnabled, err := envBoolFrom("NGODINGMCP_OAUTH", oauthSavedOr(saved, true))
+	if err != nil {
+		return nil, err
+	}
+
+	fs.BoolVar(&opts.allowRun, "allow-run", allowRun, "enable the opt-in run_command and background process tools")
 	fs.StringVar(&opts.runAllow, "run-allow", os.Getenv("NGODINGMCP_RUN_ALLOWLIST"), "override the built-in command prefixes allowed for run_command")
 	fs.StringVar(&opts.runExact, "run-allow-exact", os.Getenv("NGODINGMCP_RUN_ALLOWLIST_EXACT"), "override the built-in exact commands allowed for run_command")
-	fs.DurationVar(&opts.runTimeout, "run-timeout", envDuration("NGODINGMCP_RUN_TIMEOUT", time.Minute), "per-command timeout for run_command")
-	fs.BoolVar(&opts.allowSensitive, "allow-sensitive", envBoolFrom("NGODINGMCP_ALLOW_SENSITIVE", false), "allow tools to read, list and edit sensitive files (.env, keys, .git internals)")
+	fs.DurationVar(&opts.runTimeout, "run-timeout", runTimeout, "per-command timeout for run_command")
+	fs.BoolVar(&opts.allowSensitive, "allow-sensitive", allowSensitive, "allow tools to read, list and edit sensitive files (.env, keys, .git internals)")
 
-	fs.BoolVar(&opts.allowDownload, "allow-download", envBoolFrom("NGODINGMCP_ALLOW_DOWNLOAD", saved.AllowDownload), "enable the opt-in download_file tool (https, public hosts only)")
+	fs.BoolVar(&opts.allowDownload, "allow-download", allowDownload, "enable the opt-in download_file tool (https, public hosts only)")
 	fs.StringVar(&opts.downloadHosts, "download-allow-host", os.Getenv("NGODINGMCP_DOWNLOAD_ALLOW_HOSTS"), "limit download_file to these hosts (comma-separated); empty means any public host")
-	fs.Int64Var(&opts.downloadMaxBytes, "download-max-bytes", envInt64("NGODINGMCP_DOWNLOAD_MAX_BYTES", 20<<20), "maximum size per download_file call, in bytes")
-	fs.Int64Var(&opts.uploadMaxBytes, "upload-max-bytes", envInt64("NGODINGMCP_UPLOAD_MAX_BYTES", 20<<20), "maximum size per file uploaded through the web UI, in bytes")
+	fs.Int64Var(&opts.downloadMaxBytes, "download-max-bytes", downloadMaxBytes, "maximum size per download_file call, in bytes")
+	fs.Int64Var(&opts.uploadMaxBytes, "upload-max-bytes", uploadMaxBytes, "maximum size per file uploaded through the web UI, in bytes")
 	fs.StringVar(&opts.publicURL, "public-url", envOr("NGODINGMCP_PUBLIC_URL", saved.PublicURL), "external base URL of this server (e.g. \"https://mcp.example.com\"); used as the OAuth issuer/resource identifier")
-	fs.BoolVar(&opts.oauth, "oauth", envBoolFrom("NGODINGMCP_OAUTH", oauthSavedOr(saved, true)), "enable the embedded OAuth authorization server for /mcp (static token still works)")
-	fs.StringVar(&opts.trustedProxies, "trusted-proxy", envOr("NGODINGMCP_TRUSTED_PROXIES", firstNonEmpty(strings.Join(saved.TrustedProxies, ","), "loopback")), "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
+	fs.BoolVar(&opts.oauth, "oauth", oauthEnabled, "enable the embedded OAuth authorization server for /mcp (static token still works)")
+	fs.StringVar(&opts.trustedProxies, "trusted-proxy", envOr("NGODINGMCP_TRUSTED_PROXIES", config.FirstNonEmpty(strings.Join(saved.TrustedProxies, ","), "loopback")), "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -272,16 +306,16 @@ func runServer(opts *serverOptions) error {
 		MaxFileBytes:       opts.maxFileBytes,
 		AllowRun:           opts.allowRun,
 		AllowSensitive:     opts.allowSensitive,
-		RunAllowlist:       splitList(opts.runAllow),
-		RunExactAllowlist:  splitList(opts.runExact),
+		RunAllowlist:       config.SplitList(opts.runAllow),
+		RunExactAllowlist:  config.SplitList(opts.runExact),
 		RunTimeout:         opts.runTimeout,
 		AllowDownload:      opts.allowDownload,
-		DownloadAllowHosts: splitList(opts.downloadHosts),
+		DownloadAllowHosts: config.SplitList(opts.downloadHosts),
 		DownloadMaxBytes:   opts.downloadMaxBytes,
 		UploadMaxBytes:     opts.uploadMaxBytes,
 		PublicURL:          opts.publicURL,
 		OAuthDisabled:      !opts.oauth,
-		TrustedProxies:     splitList(opts.trustedProxies),
+		TrustedProxies:     config.SplitList(opts.trustedProxies),
 		Version:            buildinfo.Version(),
 		Logger:             logger,
 	})
@@ -300,9 +334,17 @@ func runServer(opts *serverOptions) error {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	<-ctx.Done()
 
-	logger.Info("shutting down")
+	select {
+	case <-ctx.Done():
+		logger.Info("shutting down")
+	case err := <-srv.Err():
+		// The HTTP listener died; there is nothing left to serve, so exit
+		// (runServerOrDie maps this to status 1 and the service manager
+		// restarts us).
+		return fmt.Errorf("HTTP listener failed: %w", err)
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
@@ -335,17 +377,22 @@ func envOr(key, fallback string) string {
 	return fallback
 }
 
-func envBool(key string) bool {
-	v, err := strconv.ParseBool(strings.TrimSpace(os.Getenv(key)))
-	return err == nil && v
+func envBool(key string, fallback bool) (bool, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback, nil
+	}
+	b, err := strconv.ParseBool(strings.TrimSpace(v))
+	if err != nil {
+		return false, fmt.Errorf("%s: invalid boolean %q (use 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False)", key, v)
+	}
+	return b, nil
 }
 
-// envBoolFrom uses the environment when set, otherwise fallback.
-func envBoolFrom(key string, fallback bool) bool {
-	if _, ok := os.LookupEnv(key); !ok {
-		return fallback
-	}
-	return envBool(key)
+// envBoolFrom reads the environment as a strict boolean; an invalid value
+// is an error, not a silent fallback.
+func envBoolFrom(key string, fallback bool) (bool, error) {
+	return envBool(key, fallback)
 }
 
 // oauthSavedOr returns the OAuth setting from config.json when set,
@@ -357,39 +404,34 @@ func oauthSavedOr(saved config.Config, fallback bool) bool {
 	return *saved.OAuth
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
+func envDuration(key string, fallback time.Duration) (time.Duration, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback, nil
 	}
-	return ""
+	d, err := time.ParseDuration(strings.TrimSpace(v))
+	if err != nil {
+		return 0, fmt.Errorf("%s: invalid duration %q (examples: 30s, 5m)", key, v)
+	}
+	if d <= 0 {
+		return 0, fmt.Errorf("%s: duration must be positive, got %q", key, v)
+	}
+	return d, nil
 }
 
-func envDuration(key string, fallback time.Duration) time.Duration {
-	v, err := time.ParseDuration(strings.TrimSpace(os.Getenv(key)))
-	if err != nil || v <= 0 {
-		return fallback
+func envInt64(key string, fallback int64) (int64, error) {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback, nil
 	}
-	return v
-}
-
-func envInt64(key string, fallback int64) int64 {
-	v, err := strconv.ParseInt(strings.TrimSpace(os.Getenv(key)), 10, 64)
-	if err != nil || v <= 0 {
-		return fallback
+	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: invalid integer %q", key, v)
 	}
-	return v
-}
-
-func splitList(s string) []string {
-	var out []string
-	for _, part := range strings.Split(s, ",") {
-		if p := strings.TrimSpace(part); p != "" {
-			out = append(out, p)
-		}
+	if n <= 0 {
+		return 0, fmt.Errorf("%s: value must be positive, got %q", key, v)
 	}
-	return out
+	return n, nil
 }
 
 func homeDir() string {

@@ -394,6 +394,28 @@ func TestStateRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMCPRejectsUISessionCookie(t *testing.T) {
+	s := newTestServer(t)
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := s.MCP(next)
+
+	// A valid UI session cookie must not authenticate /mcp: browser
+	// credentials and machine credentials are different.
+	sessionID, err := s.auth.Sessions().Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/mcp", nil)
+	req.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: sessionID})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Result().StatusCode != http.StatusUnauthorized {
+		t.Fatalf("UI session cookie accepted by /mcp: status %d", rec.Result().StatusCode)
+	}
+}
+
 func TestMCPUnauthorizedChallenge(t *testing.T) {
 	s := newTestServer(t)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -469,7 +491,14 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 	q.Set("scope", "mcp")
 	q.Set("resource", "http://127.0.0.1:8080")
 
-	session := &http.Cookie{Name: "ngodingmcp_session", Value: testToken}
+	// The consent page is only shown to signed-in browser sessions, which
+	// are now opaque server-side session IDs (the raw token is not a
+	// session). Mint one through the same authenticator.
+	sessionID, err := s.auth.Sessions().Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	session := &http.Cookie{Name: "ngodingmcp_session", Value: sessionID}
 
 	// Render the consent page with a session cookie; it must carry a CSRF token.
 	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/oauth/authorize?"+q.Encode(), nil)

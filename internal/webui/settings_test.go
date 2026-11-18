@@ -64,7 +64,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 
 	// Valid update persists and reports restart required.
-	body := `{"publicUrl":"https://mcp.example.com/","oauth":false,"trustedProxies":["10.0.0.0/8","203.0.113.7"],"addr":"0.0.0.0:9000","token":"my-secret-token-123","runEnabled":true,"allowSensitive":true,"allowDownload":true}`
+	body := `{"publicUrl":"https://mcp.example.com/","oauth":false,"trustedProxies":["10.0.0.0/8","203.0.113.7"],"addr":"0.0.0.0:9000","token":"test-token-for-settings-roundtrip-0123456789","runEnabled":true,"allowSensitive":true,"allowDownload":true}`
 	rec = httptest.NewRecorder()
 	req = httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8080/api/settings", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -82,7 +82,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	if out.OAuth {
 		t.Fatal("oauth should be false")
 	}
-	if out.Addr != "0.0.0.0:9000" || out.Token != "my-secret-token-123" {
+	if out.Addr != "0.0.0.0:9000" || out.Token != "test-token-for-settings-roundtrip-0123456789" {
 		t.Fatalf("addr/token = %q/%q", out.Addr, out.Token)
 	}
 	if !out.RunEnabled || !out.AllowSensitive || !out.AllowDownload {
@@ -96,7 +96,7 @@ func TestSettingsRoundTrip(t *testing.T) {
 	if saved.PublicURL != "https://mcp.example.com" || saved.OAuth == nil || *saved.OAuth {
 		t.Fatalf("saved = %+v", saved)
 	}
-	if saved.Addr != "0.0.0.0:9000" || saved.Token != "my-secret-token-123" {
+	if saved.Addr != "0.0.0.0:9000" || saved.Token != "test-token-for-settings-roundtrip-0123456789" {
 		t.Fatalf("saved addr/token = %q/%q", saved.Addr, saved.Token)
 	}
 	if !saved.Run.Enabled || !saved.AllowSensitive || !saved.AllowDownload {

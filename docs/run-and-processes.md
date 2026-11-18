@@ -56,6 +56,10 @@ sebagai sumber policy.
 - **Exact**: `bun install --frozen-lockfile` **hanya** cocok persis;
   `bun install paket-lain` ditolak.
 - Tidak pernah lewat shell, jadi metacharacter tidak diinterpretasi.
+- Flag yang menjembatani ke eksekusi lain atau baca file di luar workspace
+  (`-exec`, `-toolexec`, `--no-index` untuk `git diff`, `-vettool` untuk
+  `go vet`, `--output` untuk menulis di luar workspace) ditolak meski command-nya
+  lolos allowlist.
 - `cwd` selalu root workspace. Timeout default 60 detik, bisa diubah per request,
   dibatasi oleh `--run-timeout`.
 - Output stdout+stderr digabung dan dipotong pada 256 KiB.

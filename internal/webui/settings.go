@@ -68,14 +68,14 @@ func (u *UI) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var in settingsRequest
 	if err := decodeJSON(r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 
 	if in.PublicURL != nil {
 		v := strings.TrimSpace(*in.PublicURL)
 		if err := oauth.ValidatePublicURL(v); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErr(w, err)
 			return
 		}
 		var norm string
@@ -90,7 +90,7 @@ func (u *UI) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 			flat = append(flat, splitCSV(entry)...)
 		}
 		if _, err := oauth.ParseTrustedProxies(flat); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErr(w, err)
 			return
 		}
 		norm := make([]string, 0, len(flat))
@@ -104,7 +104,7 @@ func (u *UI) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if in.Addr != nil {
 		v := strings.TrimSpace(*in.Addr)
 		if err := validateAddr(v); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErr(w, err)
 			return
 		}
 		in.Addr = &v
@@ -112,7 +112,7 @@ func (u *UI) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	if in.Token != nil {
 		v := strings.TrimSpace(*in.Token)
 		if err := validateToken(v); err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			writeErr(w, err)
 			return
 		}
 		in.Token = &v
@@ -209,10 +209,14 @@ func (e errStr) Error() string { return string(e) }
 
 // validateToken allows an empty token (meaning: generate one on start) and
 // everything a cookie can carry: printable ASCII except the characters that
-// break the Cookie header's own syntax.
+// break the Cookie header's own syntax. A non-empty custom token must be at
+// least 32 characters so it is not trivially guessable.
 func validateToken(token string) error {
 	if len(token) > 512 {
 		return errStr("token must be at most 512 characters")
+	}
+	if len(token) > 0 && len(token) < 32 {
+		return errStr("token must be at least 32 characters")
 	}
 	for _, c := range token {
 		if c < 0x21 || c > 0x7e {

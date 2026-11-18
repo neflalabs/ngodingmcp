@@ -24,7 +24,13 @@ func TestCheckCredentials(t *testing.T) {
 		{"bearer empty", func(r *http.Request) { r.Header.Set("Authorization", "Bearer ") }, false},
 		{"x-api-key valid", func(r *http.Request) { r.Header.Set("X-API-Key", "test-token-123") }, true},
 		{"x-api-key wrong", func(r *http.Request) { r.Header.Set("X-API-Key", "nope") }, false},
-		{"cookie valid", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: "test-token-123"}) }, true},
+		{"cookie valid (opaque session)", func(r *http.Request) {
+			id, err := a.Sessions().Create()
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: id})
+		}, true},
 		{"cookie missing", func(r *http.Request) {}, false},
 		{"cookie wrong", func(r *http.Request) { r.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: "nope"}) }, false},
 	} {

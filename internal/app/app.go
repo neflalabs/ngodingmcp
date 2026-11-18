@@ -88,6 +88,7 @@ type Server struct {
 	http      *http.Server
 	listener  net.Listener
 	logger    *slog.Logger
+	serveErr  chan error
 }
 
 // New prepares a Server. The workspace root is created if missing, and a random
@@ -235,9 +236,13 @@ func New(cfg Config) (*Server, error) {
 		download:  downloader != nil,
 		tools:     toolCount,
 		logger:    logger,
+		serveErr:  make(chan error, 1),
 		http: &http.Server{
-			Addr:              cfg.Addr,
-			Handler:           oauth.GuardHost(logRequests(logger, mux)),
+			Addr: cfg.Addr,
+			// CrossOriginProtection rejects state-changing cross-origin browser
+			// requests (Go 1.26, no trusted origins); curl and MCP clients
+			// without Origin/Sec-Fetch-Site headers are unaffected.
+			Handler:           http.NewCrossOriginProtection().Handler(securityHeaders(oauth.GuardHost(logRequests(logger, mux)))),
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       120 * time.Second,
 		},
@@ -257,9 +262,9 @@ func (s *Server) DownloadEnabled() bool { return s.download }
 func (s *Server) SensitiveGuard() bool { return !s.ws.AllowSensitive() }
 
 // Start binds the listen address and serves in the background. A serve
-// error (other than the listener being closed during shutdown) is logged;
-// shut down and inspect the log when that happens, as the process keeps
-// running without the HTTP listener.
+// error (other than the listener being closed during shutdown) is sent to
+// Err() so the process can shut down and release its port instead of running
+// on without an HTTP listener.
 func (s *Server) Start() error {
 	ln, err := net.Listen("tcp", s.cfg.Addr)
 	if err != nil {
@@ -267,12 +272,24 @@ func (s *Server) Start() error {
 	}
 	s.listener = ln
 	go func() {
-		if err := s.http.Serve(ln); err != nil && !errors.Is(err, net.ErrClosed) && !errors.Is(err, http.ErrServerClosed) {
+		// http.ErrServerClosed means Shutdown() was called: clean stop.
+		// Any other error (including the listener being closed from
+		// outside) is fatal for serving and goes to Err().
+		if err := s.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("HTTP listener failed", "addr", s.cfg.Addr, "err", err)
+			select {
+			case s.serveErr <- err:
+			default:
+			}
 		}
 	}()
 	return nil
 }
+
+// Err reports the fatal HTTP listener error, if any. It is a buffered,
+// non-blocking channel: callers select on it alongside their own shutdown
+// signal and treat a value as a reason to exit with status 1.
+func (s *Server) Err() <-chan error { return s.serveErr }
 
 // Shutdown gracefully stops the server and every background process it owns.
 func (s *Server) Shutdown(ctx context.Context) error {
@@ -413,6 +430,23 @@ func (r *statusRecorder) Flush() {
 	if f, ok := r.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// securityHeaders sets browser hardening headers on every response, including
+// /login, the OAuth consent page, and /mcp. The CSP allows only same-origin
+// scripts and styles; like all pages here, login and consent load no inline
+// scripts or styles.
+func securityHeaders(next http.Handler) http.Handler {
+	const csp = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Content-Security-Policy", csp)
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 func logRequests(logger *slog.Logger, next http.Handler) http.Handler {

@@ -76,11 +76,17 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	s.mu.Lock()
 	if len(s.clients) >= maxRegisteredClients {
-		s.mu.Unlock()
-		writeRegisterError(w, http.StatusBadRequest,
-			"invalid_client_metadata",
-			fmt.Sprintf("too many registered clients (limit %d)", maxRegisteredClients))
-		return
+		// Evict the oldest client that has never been used for a token
+		// exchange; clients that proved active are always kept.
+		victim, ok := pickEvictionLocked(s.clients)
+		if !ok {
+			s.mu.Unlock()
+			writeRegisterError(w, http.StatusBadRequest,
+				"invalid_client_metadata",
+				fmt.Sprintf("too many registered clients (limit %d) and all of them are in use; ask the administrator to clear ~/.config/ngodingmcp/oauth.json", maxRegisteredClients))
+			return
+		}
+		delete(s.clients, victim)
 	}
 	s.clients[clientID] = client
 	err = s.persistLocked()
@@ -197,6 +203,28 @@ func contains(list []string, want string) bool {
 		}
 	}
 	return false
+}
+
+// pickEvictionLocked returns the ID of the least valuable client to evict: a
+// client that has never been used for a token exchange, oldest registration
+// first. Returns false when every registered client has been used at least
+// once, in which case eviction would risk dropping an active client and the
+// registration is rejected instead.
+func pickEvictionLocked(clients map[string]registeredClient) (string, bool) {
+	var bestID string
+	var bestAt int64 = -1
+	for id, c := range clients {
+		if c.LastUsedAt != 0 {
+			continue
+		}
+		if bestAt == -1 || c.CreatedAt < bestAt {
+			bestAt, bestID = c.CreatedAt, id
+		}
+	}
+	if bestAt == -1 {
+		return "", false
+	}
+	return bestID, true
 }
 
 func grantTypesOrDefault(in []string) []string {

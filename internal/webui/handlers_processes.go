@@ -27,7 +27,7 @@ func (u *UI) handleStopProcess(w http.ResponseWriter, r *http.Request) {
 	}
 	var req stopProcessRequest
 	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	grace := time.Duration(req.GraceSeconds) * time.Second
@@ -72,7 +72,7 @@ func (u *UI) handleProcessLogs(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
 	var req stopProcessRequest
 	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	info, err := u.procs.Restart(r.PathValue("name"), time.Duration(req.GraceSeconds)*time.Second)
@@ -86,7 +86,7 @@ func (u *UI) handleRestartProcess(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handleStopAllProcesses(w http.ResponseWriter, r *http.Request) {
 	var req stopProcessRequest
 	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	grace := time.Duration(req.GraceSeconds) * time.Second

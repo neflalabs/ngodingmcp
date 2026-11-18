@@ -1,13 +1,13 @@
 package gitwrite
 
 import (
-	"fmt"
+	"context"
 	"errors"
-	"strings"
+	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
-	"net/url"
-	"context"
+	"strings"
 )
 
 // Remote is one configured remote. URLs have credentials scrubbed.

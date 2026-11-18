@@ -38,7 +38,7 @@ type searchReplaceReq struct {
 func (u *UI) handleSearchReplace(w http.ResponseWriter, r *http.Request) {
 	var req searchReplaceReq
 	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	res, err := u.ws.SearchReplace(req.Path, req.Pattern, req.Replacement, req.Glob, req.DryRun, req.MaxFiles)
@@ -109,7 +109,7 @@ type putFileRequest struct {
 func (u *UI) handlePutFile(w http.ResponseWriter, r *http.Request) {
 	var req putFileRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	p, n, err := u.ws.WriteFile(req.Path, req.Content)
@@ -137,7 +137,7 @@ type pathRequest struct {
 func (u *UI) handleMkdir(w http.ResponseWriter, r *http.Request) {
 	var req pathRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	p, err := u.ws.Mkdir(req.Path)
@@ -156,7 +156,7 @@ type renameRequest struct {
 func (u *UI) handleRename(w http.ResponseWriter, r *http.Request) {
 	var req renameRequest
 	if err := decodeJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	p, err := u.ws.Rename(req.From, req.To)

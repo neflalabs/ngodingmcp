@@ -29,9 +29,11 @@ var (
 
 // blockedFlags are arguments that turn an allowlisted command into a way to
 // run other programs or write outside the workspace: -exec/-toolexec make the
-// go toolchain invoke an alternate program, --exec covers git helpers, and
-// --output lets git diff/log overwrite files anywhere the user can write.
-var blockedFlags = []string{"-exec", "--exec", "-toolexec", "--toolexec", "--output", "-output"}
+// go toolchain invoke an alternate program, --exec covers git helpers,
+// --output lets git diff/log overwrite files anywhere the user can write,
+// --no-index lets git diff read files the user can read (e.g. /etc/passwd),
+// and -vettool makes go vet load a custom analysis program.
+var blockedFlags = []string{"-exec", "--exec", "-toolexec", "--toolexec", "--output", "-output", "--no-index", "-vettool", "--vettool"}
 
 // Options configures a Runner.
 type Options struct {

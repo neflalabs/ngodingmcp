@@ -124,7 +124,7 @@ func (u *UI) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var in WorkspaceInput
 	if err := decodeJSON(r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	list, err := u.workspaces.Save("", in)
@@ -138,7 +138,7 @@ func (u *UI) handleCreateWorkspace(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handleUpdateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var in WorkspaceInput
 	if err := decodeJSON(r, &in); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	list, err := u.workspaces.Save(r.PathValue("name"), in)
@@ -165,7 +165,7 @@ type activateRequest struct {
 func (u *UI) handleActivateWorkspace(w http.ResponseWriter, r *http.Request) {
 	var req activateRequest
 	if err := decodeOptionalJSON(r, &req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
 	res, err := u.workspaces.Switch(r.Context(), r.PathValue("name"), req.StopProcesses)
@@ -192,6 +192,6 @@ func writeWorkspaceErr(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrWorkspaceExists), errors.Is(err, workspace.ErrBusy):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	default:
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 	}
 }

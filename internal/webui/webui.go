@@ -154,9 +154,14 @@ func (u *UI) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	u.clearLoginFailures(ip)
 	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	sessionID, err := u.auth.StartSession()
+	if err != nil {
+		http.Error(w, "could not start session", http.StatusInternalServerError)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     u.auth.CookieName(),
-		Value:    strings.TrimSpace(r.PostFormValue("token")),
+		Value:    sessionID,
 		Path:     "/",
 		MaxAge:   cookieMaxAge,
 		HttpOnly: true,
@@ -166,8 +171,9 @@ func (u *UI) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// Logout clears the session cookie.
+// Logout revokes the UI session server-side and clears the cookie.
 func (u *UI) Logout(w http.ResponseWriter, r *http.Request) {
+	u.auth.EndSession(r)
 	http.SetCookie(w, &http.Cookie{
 		Name:     u.auth.CookieName(),
 		Value:    "",
@@ -244,8 +250,24 @@ func queryInt(s string, def int) (int, error) {
 	return strconv.Atoi(s)
 }
 
+var errWrongContentType = errStr("Content-Type must be application/json")
+
+// jsonContentType reports whether the request carries a JSON content type
+// (application/json, any parameters).
+func jsonContentType(r *http.Request) bool {
+	ct := r.Header.Get("Content-Type")
+	// strip parameters
+	if i := strings.IndexByte(ct, ';'); i != -1 {
+		ct = ct[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(ct), "application/json")
+}
+
 func decodeJSON(r *http.Request, v any) error {
 	defer r.Body.Close()
+	if !jsonContentType(r) {
+		return errWrongContentType
+	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 16<<20))
 	if err := dec.Decode(v); err != nil {
 		return errors.New("invalid JSON body: " + err.Error())
@@ -256,6 +278,9 @@ func decodeJSON(r *http.Request, v any) error {
 // decodeOptionalJSON is decodeJSON for endpoints whose body may be omitted.
 func decodeOptionalJSON(r *http.Request, v any) error {
 	defer r.Body.Close()
+	if !jsonContentType(r) && r.ContentLength != 0 {
+		return errWrongContentType
+	}
 	dec := json.NewDecoder(io.LimitReader(r.Body, 16<<20))
 	if err := dec.Decode(v); err != nil && !errors.Is(err, io.EOF) {
 		return errors.New("invalid JSON body: " + err.Error())
@@ -277,6 +302,8 @@ func writeErr(w http.ResponseWriter, err error) {
 func errStatus(err error) int {
 	status := http.StatusBadRequest
 	switch {
+	case errors.Is(err, errWrongContentType):
+		status = http.StatusUnsupportedMediaType
 	case errors.Is(err, workspace.ErrOutsideRoot), errors.Is(err, workspace.ErrSensitive):
 		status = http.StatusForbidden
 	case errors.Is(err, workspace.ErrExists):

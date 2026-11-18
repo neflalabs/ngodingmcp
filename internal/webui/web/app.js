@@ -558,7 +558,7 @@ async function openStatsModal() {
       </div>
     `;
   } catch (err) {
-    body.innerHTML = `<span style="color:var(--danger)">Failed to load stats: ${escapeHtml(err.message)}</span>`;
+    body.innerHTML = `<span class="err-text">Failed to load stats: ${escapeHtml(err.message)}</span>`;
   }
 }
 
@@ -606,7 +606,7 @@ async function executeSearchReplace(dryRun) {
       }
     }
   } catch (err) {
-    resDiv.innerHTML = `<span style="color:var(--danger)">Error: ${escapeHtml(err.message)}</span>`;
+    resDiv.innerHTML = `<span class="err-text">Error: ${escapeHtml(err.message)}</span>`;
   }
 }
 

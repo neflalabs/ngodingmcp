@@ -2,8 +2,22 @@
 
 ## Jaringan dan auth
 
-- Auth token untuk MCP dan REST (`Authorization: Bearer` atau `X-API-Key`), login
-  cookie untuk browser.
+- Auth token untuk MCP dan REST (`Authorization: Bearer` atau `X-API-Key`).
+  `/mcp` **hanya** menerima header kredensial itu; cookie browser tidak diterima,
+  jadi cookie yang bocor tidak bisa dipakai replay ke `/mcp`.
+- Login browser memakai cookie sesi **opaque server-side** (ID acak 32 byte),
+  bukan token: HttpOnly, `SameSite=Strict`, `Secure` saat TLS/https, sliding
+  TTL 7 hari. Logout mencabut sesi di server. Restart server = semua sesi
+  Web UI hilang. Login dibatasi 5 percobaan gagal per menit per IP.
+- Semua respons HTTP membawa header hardening: `Content-Security-Policy`
+  (`default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self';
+  frame-ancestors 'none'; base-uri 'self'; form-action 'self'`),
+  `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`.
+  Browser menolak request state-changing dari origin lain
+  (`http.CrossOriginProtection`). Endpoint REST yang menerima JSON wajib
+  `Content-Type: application/json` (yang lain 415).
+- Token kustom yang di-set lewat Web UI minimal 32 karakter.
 - `/mcp` juga mendukung OAuth 2.1 sesuai MCP spec: resource server + authorization
   server embedded. Access token ES256 terikat audience ke server ini (RFC 8707),
   PKCE S256 wajib untuk code exchange, refresh token rotasi setiap dipakai.
@@ -53,6 +67,11 @@ dan count, dan delete rekursif ditolak kalau foldernya berisi file tersebut.
 Matikan dengan `--allow-sensitive` (atau `NGODINGMCP_ALLOW_SENSITIVE=true`, toggle
 di TUI, atau setelan per workspace di Web UI) hanya kalau perlu.
 
+Catatan: pencarian & statistik melewati direktori dependensi/cache build
+(`node_modules`, `.next`, `.venv`, `__pycache__`, dll.) terlepas dari pengaturan
+ini — itu bukan batas keamanan. `delete_path` tetap memindai seluruh subtree
+incl. direktori tersebut supaya penghapusan tidak sengaja terdeteksi.
+
 ## Git
 
 - Tool git **bisa menulis**: `git_init`, `git_add`, `git_unstage`, `git_commit`,
@@ -64,10 +83,17 @@ di TUI, atau setelan per workspace di Web UI) hanya kalau perlu.
   atau force.
 - Hook repo (`core.hooksPath`, husky) dan GPG signing tidak pernah dijalankan;
   fsmonitor dan pager dimatikan. Tool baca juga mematikan external diff dan
-  textconv, jadi tidak ada program dari config repo yang ikut jalan. Tool remote
-  dan merge menolak jalan kalau `.git/config` sendiri mengatur credential helper,
-  ssh command, askpass, `insteadOf`, upload/receive-pack, filter, merge driver,
-  atau include.
+  textconv, jadi tidak ada program dari config repo yang ikut jalan. **Semua
+  tool git** (baca dan tulis) menolak jalan kalau `.git/config` sendiri
+  mengatur credential helper, ssh command, askpass, `insteadOf`,
+  upload/receive-pack, filter, merge driver, atau include — bukan hanya tool
+  remote dan merge.
+- Subprocess git menerima environment **tanpa variabel `GIT_*`** yang mengarahkan
+  git (fsmonitor, diff.external, config path, ssh variant, template dir, dst.).
+  Variabel rahasia umum (mis. `GITHUB_TOKEN`) tetap diwariskan ke subprocess
+  git — yang menghentikan eksekusi kode dari repo adalah penonaktifan hook/
+  filter/fsmonitor/external diff di atas dan penolakan `CheckLocalConfig`,
+  bukan penyaringan environment.
 - Remote hanya https dan ssh (`GIT_ALLOW_PROTOCOL=https:ssh`); kredensial di URL
   disensor dari output dan URL remote tidak masuk log aktivitas. Tool remote tidak
   pernah meminta input (tanpa prompt, ssh BatchMode, timeout 2 menit).
@@ -81,7 +107,9 @@ Detail: [tools.md](tools.md#git).
 - `run_command` dan background process memberi akses eksekusi sebagai user yang
   menjalankan server. Aktifkan hanya dengan allowlist minimal dan di workspace
   tepercaya. Allowlist adalah batas kepercayaan: `go test` tetap bisa menjalankan
-  kode dari workspace.
+  kode dari workspace. Flag yang mem-bypass review dimatikan meski lolos
+  allowlist (mis. `-exec`/`-toolexec`, `--no-index` untuk `git diff`,
+  `-vettool` untuk `go vet`, `--output`).
 - `start_process`/`stop_process` dapat menyalakan dan mematikan proses; seluruh
   proses dimatikan saat server shutdown.
 - `download_file` hanya ke host https publik; alamat privat/loopback/metadata cloud

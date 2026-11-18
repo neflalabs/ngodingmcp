@@ -90,9 +90,9 @@ func NewWithPreset(version, root, addr, token string) *Model {
 	m := &Model{version: version, built: buildinfo.Get().Built(), logs: NewLogBuffer(500)}
 
 	defaults := [fieldCount]string{
-		firstNonEmpty(root, saved.Root, os.Getenv("NGODINGMCP_ROOT"), defaultRoot()),
-		firstNonEmpty(addr, saved.Addr, os.Getenv("NGODINGMCP_ADDR"), "127.0.0.1:8080"),
-		firstNonEmpty(token, saved.Token, os.Getenv("NGODINGMCP_TOKEN")),
+		config.FirstNonEmpty(root, saved.Root, os.Getenv("NGODINGMCP_ROOT"), defaultRoot()),
+		config.FirstNonEmpty(addr, saved.Addr, os.Getenv("NGODINGMCP_ADDR"), "127.0.0.1:8080"),
+		config.FirstNonEmpty(token, saved.Token, os.Getenv("NGODINGMCP_TOKEN")),
 		"",
 		"",
 		"",
@@ -100,7 +100,7 @@ func NewWithPreset(version, root, addr, token string) *Model {
 	m.runEnabled = saved.Run.Enabled
 	m.allowSensitive = saved.AllowSensitive
 	m.allowDownload = saved.AllowDownload
-	m.publicURL = firstNonEmpty(os.Getenv("NGODINGMCP_PUBLIC_URL"), saved.PublicURL)
+	m.publicURL = config.FirstNonEmpty(os.Getenv("NGODINGMCP_PUBLIC_URL"), saved.PublicURL)
 	m.trustedProxies = config.SplitList(os.Getenv("NGODINGMCP_TRUSTED_PROXIES"))
 	if len(m.trustedProxies) == 0 {
 		m.trustedProxies = saved.TrustedProxies
@@ -350,15 +350,6 @@ func defaultRoot() string {
 		return "ngodingmcp-workspace"
 	}
 	return home + string(os.PathSeparator) + "ngodingmcp-workspace"
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 func max(a, b int) int {

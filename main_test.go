@@ -89,13 +89,13 @@ func TestParseServerFlagsRunOptions(t *testing.T) {
 		t.Errorf("runTimeout = %v", opts.runTimeout)
 	}
 
-	got := splitList(opts.runAllow)
+	got := config.SplitList(opts.runAllow)
 	want := []string{"go build", "go test"}
 	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Errorf("splitList = %v, want %v", got, want)
 	}
 
-	exact := splitList(opts.runExact)
+	exact := config.SplitList(opts.runExact)
 	if len(exact) != 2 || exact[0] != "bun install --frozen-lockfile" {
 		t.Errorf("splitList exact = %v", exact)
 	}
@@ -149,7 +149,7 @@ func TestParseServerFlagsDownload(t *testing.T) {
 	if !opts.allowDownload || opts.downloadMaxBytes != 1000 || opts.uploadMaxBytes != 2000 {
 		t.Errorf("flags not applied: %+v", opts)
 	}
-	if hosts := splitList(opts.downloadHosts); len(hosts) != 2 || hosts[1] != "*.b.com" {
+	if hosts := config.SplitList(opts.downloadHosts); len(hosts) != 2 || hosts[1] != "*.b.com" {
 		t.Errorf("hosts = %v", hosts)
 	}
 	if _, err := parseServerFlags([]string{"--download-max-bytes", "0"}); err == nil {
@@ -168,21 +168,31 @@ func TestParseServerFlagsDownload(t *testing.T) {
 
 func TestEnvBoolAndDuration(t *testing.T) {
 	t.Setenv("RUNNER_TEST_BOOL", "true")
-	if !envBool("RUNNER_TEST_BOOL") {
-		t.Error("envBool(true) = false")
+	b, err := envBool("RUNNER_TEST_BOOL", false)
+	if err != nil || !b {
+		t.Errorf("envBool(true) = %v, %v", b, err)
 	}
 	t.Setenv("RUNNER_TEST_BOOL", "not-a-bool")
-	if envBool("RUNNER_TEST_BOOL") {
-		t.Error("envBool(invalid) = true")
+	if b, err := envBool("RUNNER_TEST_BOOL", false); err == nil {
+		t.Errorf("envBool(invalid) = %v, want error", b)
+	}
+	t.Setenv("RUNNER_TEST_BOOL", "")
+	if b, err := envBool("RUNNER_TEST_BOOL", true); err != nil || !b {
+		t.Errorf("envBool(unset) = %v, %v, want fallback true", b, err)
 	}
 
 	t.Setenv("RUNNER_TEST_DUR", "45s")
-	if got := envDuration("RUNNER_TEST_DUR", time.Minute); got != 45*time.Second {
-		t.Errorf("envDuration = %v", got)
+	d, err := envDuration("RUNNER_TEST_DUR", time.Minute)
+	if err != nil || d != 45*time.Second {
+		t.Errorf("envDuration = %v, %v", d, err)
 	}
 	t.Setenv("RUNNER_TEST_DUR", "bogus")
-	if got := envDuration("RUNNER_TEST_DUR", time.Minute); got != time.Minute {
-		t.Errorf("envDuration fallback = %v", got)
+	if _, err := envDuration("RUNNER_TEST_DUR", time.Minute); err == nil {
+		t.Error("envDuration(bogus): want error")
+	}
+	t.Setenv("RUNNER_TEST_DUR", "-5s")
+	if _, err := envDuration("RUNNER_TEST_DUR", time.Minute); err == nil {
+		t.Error("envDuration(negative): want error")
 	}
 }
 

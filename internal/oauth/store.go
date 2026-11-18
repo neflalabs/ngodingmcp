@@ -25,6 +25,10 @@ type registeredClient struct {
 	ResponseTypes           []string `json:"response_types"`
 	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
 	CreatedAt               int64    `json:"created_at"`
+	// LastUsedAt is the Unix time of the most recent token issue for this
+	// client; 0 means never used. Persisted so eviction decisions survive
+	// restarts.
+	LastUsedAt int64 `json:"last_used_at,omitempty"`
 }
 
 type persistedState struct {

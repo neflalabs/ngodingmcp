@@ -918,3 +918,6 @@ height: calc(100dvh - 46px);
   .consent-actions { flex-direction: column; }
   .consent-actions button { padding: 12px; }
 }
+
+/* Shared danger text for error messages */
+.err-text { color: var(--danger); }

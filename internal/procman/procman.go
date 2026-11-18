@@ -253,9 +253,7 @@ func (m *Manager) StartWithOptions(opts StartOptions) (Info, error) {
 	cmd := exec.Command(opts.Argv[0], opts.Argv[1:]...)
 	cmd.Dir = dir
 	cmd.Env = append(runner.CleanEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0")
-	for _, kv := range envPairs(env) {
-		cmd.Env = append(cmd.Env, kv)
-	}
+	cmd.Env = append(cmd.Env, envPairs(env)...)
 	prepareCmd(cmd)
 	cmd.Stdout = p.logs
 	cmd.Stderr = p.logs

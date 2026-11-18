@@ -100,6 +100,15 @@ func (s *Server) issueTokenPairFor(issuer, clientID, scope, grant, resource stri
 		grant:     grant,
 		expiresAt: now.Add(refreshTokenTTL),
 	}
+	// Mark the client as used so eviction keeps it. Best effort: a failed
+	// persist must not fail the token issue.
+	if c, ok := s.clients[clientID]; ok {
+		c.LastUsedAt = now.Unix()
+		s.clients[clientID] = c
+		if err := s.persistLocked(); err != nil {
+			s.logger.Warn("persist oauth state after token issue", "err", err)
+		}
+	}
 	s.mu.Unlock()
 
 	return &tokenResponse{

@@ -18,10 +18,6 @@
     <p class="error" id="error">Invalid token. Try again.</p>
     <button class="primary" type="submit">Sign in</button>
   </form>
-  <script>
-    if (new URLSearchParams(location.search).get("error") === "1") {
-      document.getElementById("error").classList.add("visible");
-    }
-  </script>
+  <script src="/static/login.js"></script>
 </body>
 </html>
