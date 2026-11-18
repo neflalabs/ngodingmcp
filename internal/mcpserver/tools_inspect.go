@@ -32,7 +32,7 @@ type workspaceStatsOut struct {
 func addWorkspaceStats(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "workspace_stats",
-		Description: "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files.",
+		Description: "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ workspaceStatsArgs) (*mcp.CallToolResult, workspaceStatsOut, error) {
 		stats, err := ws.Stats()
@@ -135,7 +135,7 @@ type countTokensOut struct {
 func addCountTokens(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "count_tokens",
-		Description: "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy.",
+		Description: "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped inside directories; pass one directly to count it.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in countTokensArgs) (*mcp.CallToolResult, countTokensOut, error) {
 		items, err := ws.CountTokens(in.Paths)

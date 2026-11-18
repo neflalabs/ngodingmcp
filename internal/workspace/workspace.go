@@ -183,6 +183,37 @@ func (w *Workspace) skipBlocked(base, p string, d fs.DirEntry) (bool, error) {
 	return true, nil
 }
 
+// heavyDirs are dependency and build-cache directories that are skipped by the
+// bulk walkers (search, search_and_replace, stats, count_tokens). They hold
+// third-party or generated files that dominate walk time and drown out project
+// code. The names are unambiguous on purpose: ordinary source folders such as
+// build/, dist/ or vendor/ are NOT skipped. Pointing a walker directly at one
+// of these directories (path=node_modules/foo) still works, because the walk
+// root itself is never skipped. Names are matched case-sensitively; on
+// case-insensitive filesystems (macOS, Windows) e.g. ".CACHE" is not skipped.
+// Note: skipping is silent by design and is independent of --allow-sensitive;
+// it is a performance guard, not a security boundary.
+var heavyDirs = map[string]struct{}{
+	"node_modules":     {},
+	"bower_components": {},
+	".next":            {},
+	".nuxt":            {},
+	".svelte-kit":      {},
+	".turbo":           {},
+	".cache":           {},
+	".venv":            {},
+	"__pycache__":      {},
+}
+
+// skipHeavy reports whether the walker should skip the directory d below base.
+func skipHeavy(base, p string, d fs.DirEntry) bool {
+	if p == base || !d.IsDir() {
+		return false
+	}
+	_, heavy := heavyDirs[d.Name()]
+	return heavy
+}
+
 func (w *Workspace) checkSymlinkEscape(full string) error {
 	p := full
 	for {

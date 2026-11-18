@@ -4,7 +4,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy.",
+    "description": "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped inside directories; pass one directly to count it.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1889,7 +1889,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing.",
+    "description": "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to replace inside it.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1990,7 +1990,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Search file contents with a regular expression and return matching paths with line numbers.",
+    "description": "Search file contents with a regular expression and return matching paths with line numbers. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to search inside it.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -2451,7 +2451,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files.",
+    "description": "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped.",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"

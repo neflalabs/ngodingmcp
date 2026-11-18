@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 // globToRegexp converts a glob into a regexp. `*` matches within a path
@@ -50,6 +51,60 @@ type Match struct {
 	Text string `json:"text"`
 }
 
+// MaxMatchTextBytes caps the text of a single search hit. Minified bundles and
+// source maps have lines of hundreds of kilobytes; without a cap a handful of
+// hits can produce megabytes of output.
+const MaxMatchTextBytes = 300
+
+// clipAroundMatch shortens line to roughly max bytes, keeping the first match
+// of re visible and marking cut ends with an ellipsis. Short lines are
+// returned unchanged. Cuts prefer rune boundaries; degenerate input (long
+// runs of UTF-8 continuation bytes, possible in files that are not valid
+// UTF-8) falls back to the raw byte window so a match stays visible instead
+// of panicking.
+func clipAroundMatch(re *regexp.Regexp, line string, max int) string {
+	if len(line) <= max {
+		return line
+	}
+	if max < 1 {
+		max = 1
+	}
+	start := 0
+	if loc := re.FindStringIndex(line); loc != nil {
+		start = loc[0] - max/3
+		if start < 0 {
+			start = 0
+		}
+	}
+	end := start + max
+	if end > len(line) {
+		end = len(line)
+		start = end - max
+	}
+	rawStart, rawEnd := start, end
+	// Advance start to a rune boundary, without passing end.
+	for start > 0 && start < end && !utf8.RuneStart(line[start]) {
+		start++
+	}
+	// Retreat end to a rune boundary, without passing start.
+	for end < len(line) && end > start && !utf8.RuneStart(line[end]) {
+		end--
+	}
+	if start >= end {
+		// Every byte in the window is a continuation byte: keep the raw
+		// window so the match stays visible rather than returning "".
+		start, end = rawStart, rawEnd
+	}
+	out := line[start:end]
+	if start > 0 {
+		out = "…" + out
+	}
+	if end < len(line) {
+		out += "…"
+	}
+	return out
+}
+
 // SearchText searches for pattern (a Go regular expression) inside rel,
 // optionally filtering paths with a glob.
 func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Match, error) {
@@ -82,6 +137,9 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 		}
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
+		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
 		}
 		if !d.IsDir() && !w.walkFileSafe(p, d) {
 			return nil // symlink escaping the root (or broken link)
@@ -116,7 +174,8 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 		}
 		for i, line := range strings.Split(string(data), "\n") {
 			if re.MatchString(line) {
-				matches = append(matches, Match{Path: relp, Line: i + 1, Text: strings.TrimRight(line, "\r")})
+				text := strings.TrimRight(line, "\r")
+				matches = append(matches, Match{Path: relp, Line: i + 1, Text: clipAroundMatch(re, text, MaxMatchTextBytes)})
 				if len(matches) >= maxResults {
 					return stop
 				}
@@ -198,6 +257,9 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 		}
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
+		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
 		}
 		if !d.IsDir() && !w.walkFileSafe(p, d) {
 			return nil // symlink escaping the root (or broken link)

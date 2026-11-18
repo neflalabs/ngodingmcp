@@ -56,6 +56,9 @@ func (w *Workspace) Stats() (WorkspaceStats, error) {
 		if skip, err := w.skipBlocked(w.Root(), p, d); skip {
 			return err
 		}
+		if skipHeavy(w.Root(), p, d) {
+			return filepath.SkipDir
+		}
 		if !d.IsDir() && !w.walkFileSafe(p, d) {
 			return nil // symlink escaping the root (or broken link)
 		}
@@ -178,6 +181,9 @@ func (w *Workspace) countOne(rel string) (TokenCount, error) {
 		}
 		if skip, err := w.skipBlocked(full, p, d); skip {
 			return err
+		}
+		if skipHeavy(full, p, d) {
+			return filepath.SkipDir
 		}
 		if !d.IsDir() && !w.walkFileSafe(p, d) {
 			return nil // symlink escaping the root (or broken link)

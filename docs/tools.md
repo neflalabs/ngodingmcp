@@ -30,6 +30,13 @@ tool (nama, deskripsi, anotasi, schema) dikunci di
 
 Perilaku umum:
 
+- **Pencarian melewati direktori berat**: `search_text`, `search_and_replace`,
+  `workspace_stats`, dan `count_tokens` mengabaikan direktori dependensi dan
+  cache build (`node_modules`, `bower_components`, `.next`, `.nuxt`,
+  `.svelte-kit`, `.turbo`, `.cache`, `.venv`, `__pycache__`). Menunjuk langsung
+  ke direktori itu (`path: "node_modules"`) tetap bisa. Pengabaian ini diam-diam
+  dan bukan batas keamanan. Hasil `search_text` dipotong per baris (~300 byte di
+  sekitar kecocokan) dan teks output dibatasi 64 KiB.
 - **Write atomik**: setiap tulis memakai temp file lalu `rename`, jadi tidak ada
   file setengah jadi.
 - **Batas ukuran baca** (`--max-file-bytes`, default 2 MiB) dan deteksi file biner.

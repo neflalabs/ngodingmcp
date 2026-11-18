@@ -14,6 +14,12 @@ import (
 	"ngodingmcp/internal/workspace"
 )
 
+// maxSearchOutputBytes bounds the text a single search_text call returns
+// (hits are also clipped per line by workspace.MaxMatchTextBytes). The check
+// runs before each line is written, so the output may exceed the cap by one
+// formatted line (~400 bytes) plus the truncation notice.
+const maxSearchOutputBytes = 64 * 1024
+
 // addSearchTools registers search_text and search_and_replace.
 func addSearchTools(s *mcp.Server, ws *workspace.Workspace) {
 	addSearchText(s, ws)
@@ -36,7 +42,7 @@ type searchTextOut struct {
 func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_text",
-		Description: "Search file contents with a regular expression and return matching paths with line numbers.",
+		Description: "Search file contents with a regular expression and return matching paths with line numbers. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to search inside it.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in searchTextArgs) (*mcp.CallToolResult, searchTextOut, error) {
 		matches, err := ws.SearchText(in.Path, in.Pattern, in.Glob, in.MaxResults)
@@ -44,13 +50,19 @@ func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
 			return nil, searchTextOut{}, err
 		}
 		var b strings.Builder
-		for _, m := range matches {
+		kept := matches
+		for i, m := range matches {
+			if b.Len() >= maxSearchOutputBytes {
+				fmt.Fprintf(&b, "... output truncated at %d matches of %d; narrow with path or glob\n", i, len(matches))
+				kept = matches[:i]
+				break
+			}
 			fmt.Fprintf(&b, "%s:%d: %s\n", m.Path, m.Line, m.Text)
 		}
 		if b.Len() == 0 {
 			b.WriteString("no matches\n")
 		}
-		return textResult(b.String()), searchTextOut{Matches: matches}, nil
+		return textResult(b.String()), searchTextOut{Matches: kept}, nil
 	})
 }
 
@@ -72,7 +84,7 @@ type searchReplaceOut struct {
 func addSearchAndReplace(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "search_and_replace",
-		Description: "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing.",
+		Description: "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to replace inside it.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in searchReplaceArgs) (*mcp.CallToolResult, searchReplaceOut, error) {
 		res, err := ws.SearchReplace(in.Path, in.Pattern, in.Replacement, in.Glob, in.DryRun, in.MaxFiles)
