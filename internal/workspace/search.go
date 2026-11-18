@@ -246,11 +246,11 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 		return SearchReplaceResult{}, err
 	}
 	type fileResult struct {
-		matched      bool
-		relpath      string
-		count        int
-		original     string
-		updated      string
+		matched  bool
+		relpath  string
+		count    int
+		original string
+		updated  string
 	}
 	results := mapFilesUntil(files, maxFiles, func(p string, budget int) (fileResult, int) {
 		data, _, ok := w.readForBulk(p)
@@ -292,7 +292,7 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 			})
 		}
 	}
-	
+
 	if len(planned) == 0 {
 		return result, nil
 	}

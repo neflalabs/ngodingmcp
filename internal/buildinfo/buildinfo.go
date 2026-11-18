@@ -9,9 +9,11 @@
 // The CalVer part (variable version below) is bumped by hand when a release
 // is cut. The commit part comes from the VCS stamp that
 // `go build` embeds automatically inside a git checkout, so a plain
-// `go build -o ngodingmcp .` is enough. `make build` uses a matching git tag
-// (v20xx.xx.xx, exact) automatically when it exists; override with
-// `make release VERSION=v2026.12.0`. Any part can be overridden at link time:
+// `go build -o ngodingmcp .` is enough. `make build` without an exact git
+// tag or an explicit VERSION injects a development stamp (v<date>-dev)
+// derived from today's date, so builds never share a stale CalVer line;
+// `make release VERSION=v2026.12.0` overrides it. Any part can be
+// overridden at link time:
 //
 //	go build -ldflags "-X ngodingmcp/internal/buildinfo.version=v2026.12.0"
 //

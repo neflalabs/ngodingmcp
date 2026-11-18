@@ -6,12 +6,14 @@ Format versi: `<CalVer>+<commit>[.dirty]`, misalnya:
 |---|---|
 | `v2026.11.12+4deb6fa` | build bersih dari commit `4deb6fa` |
 | `v2026.11.12+4deb6fa.dirty` | dibuild dengan perubahan yang belum di-commit |
+| `v2026.11.18-dev+4deb6fa` | build development via `make build` (stamp tanggal, lihat di bawah) |
 | `v2026.11.12+dev` | tanpa info git (`go run`, source di luar repo git) |
 
 - **CalVer** (`v2026.11.12`) diganti manual di `internal/buildinfo/buildinfo.go`
-  setiap ada rilis atau fitur baru. `make build` memakai tag git eksak yang
-  cocok pola `v20*` (bila ada) secara otomatis; `make release VERSION=...`
-  tetap tersedia untuk override.
+  setiap ada rilis atau fitur baru. `make build` tanpa tag/`VERSION` eksplisit
+  menyuntik stamp **development** dari tanggal hari ini (mis. `v2026.11.18-dev`)
+  sehingga tiap build tidak berbagi CalVer basi; dengan tag git eksak (`v20*`)
+  atau `make release VERSION=...`, versi rilis dipakai.
 - **Commit** dan tanda `.dirty` diambil otomatis dari info VCS yang ditanam
   `go build` di dalam repo git. Jadi `go build -o ngodingmcp .` biasa sudah cukup,
   tanpa flag apa pun.
@@ -43,7 +45,7 @@ ngodingmcp v2026.11.12+4deb6fa.dirty
 
 ```sh
 go build -o ngodingmcp .              # dev: versi + commit otomatis
-make build                            # binary statis, waktu build ditanam
+make build                            # binary statis, waktu build ditanam; tanpa tag/VERSION: stamp v<date>-dev
 make release VERSION=v2026.12.0       # cross-compile ke dist/, override CalVer
 make version                          # build lalu cetak versinya
 ```
