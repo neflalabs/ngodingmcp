@@ -4,7 +4,9 @@ PKG := ngodingmcp/internal/buildinfo
 # The version comes from internal/buildinfo (CalVer line + git commit, which
 # go build embeds automatically). Override the CalVer line for a release with:
 #   make release VERSION=v2026.12.0
-VERSION ?=
+# When a matching git tag exists (v20xx.xx.xx), use it automatically when
+# VERSION is not given explicitly; untagged checkouts fall back to buildinfo.
+VERSION ?= $(shell git describe --tags --match 'v20*' --exact-match 2>/dev/null || echo)
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -s -w -X $(PKG).buildTime=$(BUILD_TIME)
