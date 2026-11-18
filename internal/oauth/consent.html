@@ -25,9 +25,9 @@
 
     {{if .NeedsToken}}
     <input type="password" name="token" id="token" placeholder="Server token" autocomplete="current-password" autofocus>
-    <p class="error{{if .Error}} visible{{end}}" id="error">Invalid token. Try again.</p>
+    <p class="error{{if .ErrorMsg}} visible{{end}}" id="error">{{.ErrorMsg}}</p>
     {{else}}
-    <p class="error" id="error"></p>
+    <p class="error{{if .ErrorMsg}} visible{{end}}" id="error">{{.ErrorMsg}}</p>
     {{end}}
 
     <input type="hidden" name="client_id" value="{{.ClientID}}">

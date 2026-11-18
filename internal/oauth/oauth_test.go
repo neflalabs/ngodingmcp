@@ -534,18 +534,36 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 		return rec.Result().StatusCode
 	}
 
-	if code := approve(""); code != http.StatusForbidden {
-		t.Fatalf("approve without csrf: status %d, want 403", code)
+	// A stale/missing CSRF token re-renders the consent with a fresh
+	// token and an inline error (200), not a dead-end 403.
+	for _, stale := range []string{"", "bogus-token"} {
+		code := approve(stale)
+		if code != http.StatusOK {
+			t.Fatalf("approve with stale csrf: status %d, want 200", code)
+		}
 	}
-	if code := approve("bogus-token"); code != http.StatusForbidden {
-		t.Fatalf("approve with bogus csrf: status %d, want 403", code)
+
+	// The re-rendered page carries a fresh CSRF the user can approve with.
+	req = httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/oauth/authorize?"+q.Encode(), nil)
+	req.AddCookie(session)
+	rec = httptest.NewRecorder()
+	s.handleAuthorize(rec, req)
+	body = rec.Body.String()
+	if !strings.Contains(body, `name="csrf_token"`) {
+		t.Fatalf("re-rendered consent missing csrf_token:\n%s", body)
 	}
+	marker = `name="csrf_token" value="`
+	i = strings.Index(body, marker)
+	csrf = body[i+len(marker):]
+	csrf = csrf[:strings.Index(csrf, `"`)]
 	if code := approve(csrf); code != http.StatusFound {
-		t.Fatalf("approve with valid csrf: status %d, want 302", code)
+		t.Fatalf("approve with fresh csrf: status %d, want 302", code)
 	}
-	// The CSRF token is single-use; replaying it must fail.
-	if code := approve(csrf); code != http.StatusForbidden {
-		t.Fatalf("replayed csrf token: status %d, want 403", code)
+
+	// The consumed CSRF is single-use; replaying it re-renders the
+	// consent (200) instead of a dead-end 403.
+	if code := approve(csrf); code != http.StatusOK {
+		t.Fatalf("replayed csrf: status %d, want 200", code)
 	}
 	_ = verifier
 }

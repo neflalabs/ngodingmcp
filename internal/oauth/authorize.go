@@ -18,7 +18,7 @@ type consentData struct {
 	CodeChallenge string
 	Resource      string
 	NeedsToken    bool
-	Error         bool
+	ErrorMsg      string
 	CSRFToken     string
 }
 
@@ -181,19 +181,6 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "malformed form", http.StatusBadRequest)
 		return
 	}
-	if s.hasSession(r) {
-		tok := r.PostForm.Get("csrf_token")
-		s.mu.Lock()
-		entry, ok := s.csrfTokens[tok]
-		if ok {
-			delete(s.csrfTokens, tok)
-		}
-		s.mu.Unlock()
-		if !ok || time.Now().After(entry.exp) || entry.session != s.sessionKey(r) {
-			http.Error(w, "invalid or expired CSRF token; go back and try again", http.StatusForbidden)
-			return
-		}
-	}
 	q := url.Values{
 		"client_id":             {r.PostForm.Get("client_id")},
 		"redirect_uri":          {r.PostForm.Get("redirect_uri")},
@@ -208,6 +195,41 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "authorization request invalid: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if s.hasSession(r) {
+		tok := r.PostForm.Get("csrf_token")
+		csrfOK := false
+		s.mu.Lock()
+		entry, ok := s.csrfTokens[tok]
+		if ok {
+			delete(s.csrfTokens, tok)
+			csrfOK = !time.Now().After(entry.exp) && entry.session == s.sessionKey(r)
+		}
+		s.mu.Unlock()
+		if !csrfOK {
+			// Re-render the consent with a fresh CSRF token and an
+			// inline error instead of a dead-end plain-text 403; the
+			// user can approve in one more click.
+			freshCSRF, freshErr := randomID(16)
+			if freshErr == nil {
+				s.mu.Lock()
+				s.csrfTokens[freshCSRF] = csrfEntry{session: s.sessionKey(r), exp: time.Now().Add(10 * time.Minute)}
+				s.mu.Unlock()
+			}
+			s.renderConsent(w, consentData{
+				ClientName:    in.client.ClientName,
+				ClientID:      in.clientID,
+				RedirectURI:   in.redirectURI,
+				State:         in.state,
+				Scope:         in.scope,
+				CodeChallenge: in.codeChallenge,
+				Resource:      in.resource,
+				CSRFToken:     freshCSRF,
+				ErrorMsg:      "Session expired, please try again.",
+			}, nil)
+			return
+		}
 	}
 
 	decision := r.PostForm.Get("decision")
@@ -233,7 +255,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 				CodeChallenge: in.codeChallenge,
 				Resource:      in.resource,
 				NeedsToken:    true,
-				Error:         true,
+				ErrorMsg:      "Invalid token. Try again.",
 			}, nil)
 			return
 		}
