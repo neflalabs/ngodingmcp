@@ -119,9 +119,13 @@ Tabel flag dan env lengkap: [docs/configuration.md](docs/configuration.md).
 
 - Jalankan di `localhost`, atau di belakang reverse proxy TLS kalau diakses dari
   jaringan lain. Token dikirim sebagai header biasa.
+- Login Web UI memakai session cookie opaque (bukan token), HttpOnly,
+  `SameSite=Strict`, dan semua respons membawa CSP + header hardening; `/mcp`
+  hanya menerima header kredensial (Bearer/X-API-Key).
 - Tool git bisa commit, push, pull, dan merge, tapi push tidak pernah force,
   pull hanya fast-forward, merge yang konflik di-abort otomatis, dan hook serta
-  program dari config repo tidak pernah jalan. Tool remote tidak pernah meminta
+  program dari config repo tidak pernah jalan. **Semua** tool git menolak
+  `.git/config` berbahaya. Tool remote tidak pernah meminta
   password; auth memakai ssh-agent/key, credential helper global, atau `gh`.
 - File sensitif diblokir secara default. `--allow-sensitive` membuka akses AI ke
   `.env`, private key, dan isi `.git`.

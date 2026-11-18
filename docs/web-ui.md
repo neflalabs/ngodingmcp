@@ -88,8 +88,9 @@ foldernya.
 ## Endpoint REST
 
 Semua endpoint `/api/...` wajib login/token (tanpa itu dibalas `401`). Halaman
-`/login`, `/logout`, dan aset `/static/` terbuka; `/mcp` memakai auth yang sama
-dengan `/api` (token statis atau OAuth — lihat [oauth.md](oauth.md)). Endpoint
+`/login`, `/logout`, dan aset `/static/` terbuka; `/mcp` menerima kredensial
+lewat header (`Authorization: Bearer` / `X-API-Key`) atau OAuth 2.1 — cookie UI
+tidak diterima di `/mcp` (lihat [oauth.md](oauth.md)). Endpoint
 discovery dan flow OAuth (`/.well-known/...`, `/oauth/...`) terbuka.
 
 | Endpoint | Fungsi |

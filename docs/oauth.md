@@ -61,6 +61,12 @@ client melakukan authorize ulang. Access token selalu bisa diverifikasi lewat `G
 ## Batasan
 
 - CIMD (Client ID Metadata Documents) belum didukung; hanya DCR.
+- Jumlah client terdaftar dibatasi 200 (`maxRegisteredClients`). Saat penuh, server
+  **mengevakuasi client yang belum pernah dipakai** (client `last_used_at = 0`
+  terlama) untuk memberi slot client baru. Client yang sudah pernah dipakai tidak
+  pernah di-evict; kalau semua 200 client sudah pernah dipakai, pendaftaran ditolak
+  dengan pesan penjelas. `last_used_at` diperbarui saat client berhasil menukar
+  token dan disimpan di `oauth.json`.
 - Tidak ada endpoint revoke (RFC 7009). Refresh token dirotasi setiap dipakai; token lama yang
   dipakai ulang mencabut seluruh keluarga token (RFC 6819 §5.2.2.3). Refresh token bisa juga dicabut
   dengan restart server.

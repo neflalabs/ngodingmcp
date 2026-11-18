@@ -19,6 +19,9 @@ go build -o ngodingmcp .     # atau: make build
 2. Kalau belum ada, membuat `~/.config/ngodingmcp/env` (mode 0600) berisi
    `NGODINGMCP_TOKEN`. Token-nya diambil dari token yang disimpan TUI, jadi tetap
    sama. Kalau belum ada token, dibuatkan baru.
+   Env var di file ini divalidasi ketat saat startup: nilai yang gagal di-parse
+   atau tidak positif menggagalkan boot dengan error yang menyebut nama
+   variabelnya (bukan diam-diam memakai default).
 3. Menjalankan `systemctl --user daemon-reload` dan
    `systemctl --user enable --now ngodingmcp`, menunggu port-nya menjawab, lalu
    mencetak alamat Web UI dan MCP.

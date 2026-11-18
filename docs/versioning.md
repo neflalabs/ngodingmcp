@@ -9,7 +9,9 @@ Format versi: `<CalVer>+<commit>[.dirty]`, misalnya:
 | `v2026.11.12+dev` | tanpa info git (`go run`, source di luar repo git) |
 
 - **CalVer** (`v2026.11.12`) diganti manual di `internal/buildinfo/buildinfo.go`
-  setiap ada rilis atau fitur baru.
+  setiap ada rilis atau fitur baru. `make build` memakai tag git eksak yang
+  cocok pola `v20*` (bila ada) secara otomatis; `make release VERSION=...`
+  tetap tersedia untuk override.
 - **Commit** dan tanda `.dirty` diambil otomatis dari info VCS yang ditanam
   `go build` di dalam repo git. Jadi `go build -o ngodingmcp .` biasa sudah cukup,
   tanpa flag apa pun.

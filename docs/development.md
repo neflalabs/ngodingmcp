@@ -11,7 +11,7 @@ ngodingmcp/
 ├── docs/                       # dokumentasi detail (dirujuk dari README)
 ├── internal/
 │   ├── app/                    # wiring server bersama (dipakai CLI & TUI), workspace manager
-│   ├── auth/                   # token auth (Bearer/X-API-Key/cookie)
+│   ├── auth/                   # token auth (Bearer/X-API-Key) + session store UI (opaque)
 │   ├── oauth/                  # embedded OAuth 2.1 AS+RS untuk /mcp (MCP spec)
 │                               #   RFC 9728/8414 metadata, DCR (RFC 7591), PKCE,
 │                               #   ES256 access token, consent screen, `oauth.json`
@@ -43,7 +43,7 @@ ngodingmcp/
 │   │   ├── tools_download.go   #   download_file (opt-in)
 │   │   └── testdata/tools.golden.json  # kontrak semua 40 tool (TestToolContract)
 │   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
-│       └── web/                # index.html, login.html, app.js, theme.js, style.css
+│       └── web/                # index.html, login.html, app.js, login.js, theme.js, style.css
 ├── main_test.go, service_cmd_test.go
 └── internal/*/*_test.go        # app, buildinfo, config, fetch, gitwrite, mcpserver, procman,
                                 #   oauth, runner, service, tui, webui, workspace

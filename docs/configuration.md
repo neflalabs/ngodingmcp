@@ -32,6 +32,12 @@ Contoh:
 `serve` membaca config TUI lebih dulu, lalu environment menimpa config, dan flag
 menimpa keduanya: **flag > environment > config.json**.
 
+Environment yang bernilai invalid (durasi/integer/boolean tak bisa di-parse,
+atau nilai tidak positif) **menggagalkan startup dengan pesan yang menyebut
+nama variabelnya** — bukan diam-diam memakai default. Contoh: `NGODINGMCP_OAUTH=yes`
+menolak jalan dengan error `NGODINGMCP_OAUTH: invalid boolean "yes" ...`, bukan
+mematikan OAuth diam-diam.
+
 ## Flag dan environment
 
 | Flag | Env | Default |
@@ -76,7 +82,8 @@ Lokasi: `~/.config/ngodingmcp/config.json`.
   `runEnabled`, `allowSensitive` (berlaku langsung, tanpa restart), `allowDownload`,
   `publicUrl`, `trustedProxies`, `oauth`.
 - Validasi server menolak `addr` tidak valid (`host:port`, port 1–65535) dan token
-  yang memuat karakter berbahaya (`;`, `,`, `"`, `\`) atau karakter kontrol.
+  yang memuat karakter berbahaya (`;`, `,`, `"`, `\`) atau karakter kontrol, atau
+  lebih pendek dari 32 karakter (token kustom; kosong tetap berarti generate acak).
   Perubahan tersimpan ke `config.json` dan berlaku setelah restart — kecuali
   `allowSensitive` yang langsung berlaku; environment dan flag tetap menimpa file saat start. Pola non-interaktif tetap
   tersedia: `ngodingmcp serve --public-url ... --trusted-proxy ... --oauth=false`,
