@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f1115">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f7f9">
 <title>NgodingMCP</title>
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/theme.js"></script>
@@ -18,16 +20,17 @@
   </button>
   <div class="root" id="rootPath" title="workspace root">…</div>
   <div class="top-actions">
-    <button id="btnSettings" class="ghost" type="button" title="Server settings">⚙ Settings</button>
-    <button id="btnStats" class="ghost" title="Workspace Stats">📊 Stats</button>
-    <button id="btnSearchReplaceModal" class="ghost" title="Global Search & Replace">⚡ Replace</button>
+    <button id="btnSettings" class="ghost" type="button" title="Server settings"><span class="btn-icon" aria-hidden="true">⚙</span><span class="btn-label"> Settings</span></button>
+    <button id="btnStats" class="ghost" title="Workspace Stats"><span class="btn-icon" aria-hidden="true">📊</span><span class="btn-label"> Stats</span></button>
+    <button id="btnSearchReplaceModal" class="ghost" title="Global Search & Replace"><span class="btn-icon" aria-hidden="true">⚡</span><span class="btn-label"> Replace</span></button>
     <span class="badge" id="saveState">saved</span>
     <button id="btnTheme" class="ghost theme-toggle" type="button" data-theme-toggle title="Toggle theme">☾</button>
-    <form method="post" action="/logout"><button class="ghost" type="submit">Logout</button></form>
+    <form method="post" action="/logout"><button class="ghost" type="submit" title="Logout"><span class="btn-icon mobile-only" aria-hidden="true">⎋</span><span class="btn-label">Logout</span></button></form>
   </div>
 </header>
 
 <main class="layout" id="layout">
+  <div id="sidebarBackdrop" class="sidebar-backdrop" aria-hidden="true"></div>
   <aside class="sidebar" id="sidebar">
     <div class="toolbar">
       <button id="btnNewFile" title="New file">+ file</button>
@@ -57,10 +60,10 @@
     <div class="editorbar">
       <span id="currentPath" class="path">no file selected</span>
       <div class="editor-actions">
-        <button id="btnCheckSyntax" disabled title="Check syntax">✓ check syntax</button>
-        <button id="btnRename" disabled>rename</button>
-        <button id="btnDelete" disabled class="danger">delete</button>
-        <button id="btnSave" class="primary" disabled>save (Ctrl+S)</button>
+        <button id="btnCheckSyntax" disabled title="Check syntax">✓<span class="btn-label"> check syntax</span></button>
+        <button id="btnRename" disabled title="Rename file"><span class="btn-icon mobile-only" aria-hidden="true">✏</span><span class="btn-label">rename</span></button>
+        <button id="btnDelete" disabled class="danger" title="Delete file"><span class="btn-icon mobile-only" aria-hidden="true">✕</span><span class="btn-label">delete</span></button>
+        <button id="btnSave" class="primary" disabled title="Save (Ctrl+S)">save<span class="btn-label"> (Ctrl+S)</span></button>
       </div>
     </div>
     <div class="editor-container">

@@ -19,6 +19,10 @@ UI-nya bawaan (embedded di binary, tanpa dependency frontend):
   trusted proxies and OAuth toggle. Applies after the server restarts, except
   the sensitive-files toggle. See [oauth.md](oauth.md) for the OAuth fields;
 - sidebar yang bisa di-collapse (tombol ☰ atau `Ctrl+B`; statusnya diingat browser);
+- responsif penuh: di layar ≤720px sidebar jadi overlay dengan backdrop, tombol-tombol
+  topbar menyusut jadi ikon (ada breakpoint ekstra di ≤480px), tabel stats bisa
+  di-scroll horizontal, dan semua modal memakai tinggi `dvh` serta tertutup saat
+  klik backdrop atau Escape;
 - versi build di status bar (tooltip berisi waktu build, lihat [versioning.md](versioning.md)).
 
 ## Upload

@@ -10,7 +10,7 @@ const syntaxBanner = $("syntaxBanner");
 const state = {
   currentPath: null,
   dirty: false,
-  activeNode: null,
+  expandedDirs: new Set(),
 };
 
 // escapeHtml makes a value safe to interpolate into innerHTML.
@@ -99,9 +99,11 @@ function markDirty() {
 // --- Tree -----------------------------------------------------------------
 
 async function loadTree() {
+  const prevScroll = treeEl.scrollTop;
   treeEl.innerHTML = "";
   try {
     await renderDir(treeEl, "");
+    treeEl.scrollTop = prevScroll;
     setStatus("workspace loaded");
   } catch (err) {
     setStatus(err.message, true);
@@ -159,7 +161,11 @@ async function renderDir(parent, dir) {
 
     if (entry.isDir) {
       const children = document.createElement("ul");
-      children.hidden = true;
+      const wasOpen = state.expandedDirs.has(entry.path);
+      children.hidden = !wasOpen;
+      if (wasOpen) {
+        row.classList.add("open");
+      }
       row.addEventListener("click", async (ev) => {
         ev.stopPropagation();
         if (children.hidden && !children.dataset.loaded) {
@@ -173,8 +179,24 @@ async function renderDir(parent, dir) {
         }
         children.hidden = !children.hidden;
         row.classList.toggle("open", !children.hidden);
+        if (children.hidden) {
+          state.expandedDirs.delete(entry.path);
+        } else {
+          state.expandedDirs.add(entry.path);
+        }
       });
       li.append(row, children);
+      if (wasOpen) {
+        try {
+          await renderDir(children, entry.path);
+          children.dataset.loaded = "1";
+        } catch (_) {
+          // Directory may have been removed or become inaccessible; collapse it.
+          state.expandedDirs.delete(entry.path);
+          children.hidden = true;
+          row.classList.remove("open");
+        }
+      }
     } else {
       if (entry.path === state.currentPath) {
         row.classList.add("active");
@@ -190,6 +212,29 @@ async function renderDir(parent, dir) {
   }
 }
 
+function remapExpandedDirs(oldPath, newPath) {
+  const updated = new Set();
+  for (const dir of state.expandedDirs) {
+    if (dir === oldPath) {
+      updated.add(newPath);
+    } else if (dir.startsWith(oldPath + "/")) {
+      updated.add(newPath + dir.slice(oldPath.length));
+    } else {
+      updated.add(dir);
+    }
+  }
+  state.expandedDirs = updated;
+}
+
+function pruneExpandedDirs(targetPath, isDir) {
+  if (!isDir) return;
+  for (const dir of Array.from(state.expandedDirs)) {
+    if (dir === targetPath || dir.startsWith(targetPath + "/")) {
+      state.expandedDirs.delete(dir);
+    }
+  }
+}
+
 async function renamePath(oldPath, isDir) {
   const to = prompt(`Rename ${isDir ? "folder" : "file"}:`, oldPath);
   if (!to || to === oldPath) return;
@@ -198,7 +243,13 @@ async function renamePath(oldPath, isDir) {
       method: "POST",
       body: { from: oldPath, to },
     });
-    if (state.currentPath === oldPath) {
+    if (isDir) {
+      remapExpandedDirs(oldPath, data.path);
+      if (state.currentPath && state.currentPath.startsWith(oldPath + "/")) {
+        state.currentPath = data.path + state.currentPath.slice(oldPath.length);
+        updateUI();
+      }
+    } else if (state.currentPath === oldPath) {
       state.currentPath = data.path;
       updateUI();
     }
@@ -219,10 +270,12 @@ async function deletePath(targetPath, isDir) {
     await api(`/file?path=${encodeURIComponent(targetPath)}&recursive=${isDir ? "1" : "0"}`, {
       method: "DELETE",
     });
+    pruneExpandedDirs(targetPath, isDir);
     if (state.currentPath === targetPath || (isDir && state.currentPath && state.currentPath.startsWith(targetPath + "/"))) {
       state.currentPath = null;
       state.dirty = false;
       editor.value = "";
+      syntaxBanner.classList.add("hidden");
       updateUI();
     }
     await loadTree();
@@ -238,6 +291,7 @@ async function newFileIn(dirPath) {
   const p = dirPath.replace(/\/+$/, "") + "/" + name.replace(/^\/+/, "");
   try {
     const data = await api("/file", { method: "PUT", body: { path: p, content: "" } });
+    state.expandedDirs.add(dirPath);
     await loadTree();
     await openFile(data.path);
   } catch (err) {
@@ -259,7 +313,30 @@ function setActiveNode(path) {
 
 // --- Editor ---------------------------------------------------------------
 
-async function openFile(path) {
+function jumpToLine(lineNum) {
+  const target = Math.max(1, Number(lineNum) || 1);
+  const lines = editor.value.split("\n");
+  const clamped = Math.min(target, lines.length);
+  let start = 0;
+  for (let i = 0; i < clamped - 1; i++) {
+    start += lines[i].length + 1;
+  }
+  const end = start + lines[clamped - 1].length;
+  editor.focus();
+  editor.setSelectionRange(start, end);
+  updateCursor();
+
+  const lineHeight = parseFloat(getComputedStyle(editor).lineHeight) || 20;
+  const targetTop = Math.max(0, (clamped - 1) * lineHeight - editor.clientHeight / 3);
+  editor.scrollTop = targetTop;
+  lineNumbers.scrollTop = targetTop;
+}
+
+async function openFile(path, lineNum = null) {
+  if (state.currentPath === path && lineNum) {
+    jumpToLine(lineNum);
+    return;
+  }
   if (state.dirty && !confirm("Discard unsaved changes?")) return;
   try {
     const data = await api("/file?path=" + encodeURIComponent(path));
@@ -270,9 +347,16 @@ async function openFile(path) {
     syntaxBanner.classList.add("hidden");
     syntaxBanner.textContent = "";
     updateUI();
-    updateCursor();
     setStatus(`${data.totalLines} lines · ${data.size} bytes`);
-    editor.focus();
+    if (lineNum) {
+      jumpToLine(lineNum);
+    } else {
+      updateCursor();
+      editor.focus();
+    }
+    if (isMobileViewport()) {
+      setSidebarCollapsed(true, false);
+    }
   } catch (err) {
     setStatus(err.message, true);
   }
@@ -362,12 +446,13 @@ async function newFolder() {
 
 async function renameCurrent() {
   if (!state.currentPath) return;
-  const to = prompt("Rename to:", state.currentPath);
-  if (!to || to === state.currentPath) return;
+  const oldPath = state.currentPath;
+  const to = prompt("Rename to:", oldPath);
+  if (!to || to === oldPath) return;
   try {
     const data = await api("/rename", {
       method: "POST",
-      body: { from: state.currentPath, to },
+      body: { from: oldPath, to },
     });
     state.currentPath = data.path;
     state.dirty = false;
@@ -387,6 +472,7 @@ async function deleteCurrent() {
     state.currentPath = null;
     state.dirty = false;
     editor.value = "";
+    syntaxBanner.classList.add("hidden");
     updateUI();
     await loadTree();
     setStatus("deleted");
@@ -420,7 +506,7 @@ async function runSearch() {
         const b = document.createElement("b");
         b.textContent = `${m.path}:${m.line}`;
         row.append(b, document.createTextNode("  " + m.text.trim()));
-        row.addEventListener("click", () => openFile(m.path));
+        row.addEventListener("click", () => openFile(m.path, m.line));
         searchResults.appendChild(row);
       }
     }
@@ -457,15 +543,19 @@ async function openStatsModal() {
         <div class="stat-box"><div class="stat-val">${Math.floor(num(st.totalBytes) / 1024).toLocaleString()} KB</div><div class="stat-lbl">Size</div></div>
       </div>
       <div class="stats-section-title">Files By Extension</div>
+      <div class="table-scroll">
       <table class="stats-table">
         <thead><tr><th>Extension</th><th>Files</th><th>Lines</th><th>Bytes</th></tr></thead>
         <tbody>${extRows}</tbody>
       </table>
+      </div>
       <div class="stats-section-title">Largest Files</div>
+      <div class="table-scroll">
       <table class="stats-table">
         <thead><tr><th>Path</th><th>Lines</th></tr></thead>
         <tbody>${largestRows}</tbody>
       </table>
+      </div>
     `;
   } catch (err) {
     body.innerHTML = `<span style="color:var(--danger)">Failed to load stats: ${escapeHtml(err.message)}</span>`;
@@ -695,7 +785,7 @@ function noteProcLog(text) {
 
 async function pollProcLogs() {
   const name = procLogs.name;
-  if (!name || procLogs.busy) return;
+  if (!name || procLogs.busy || document.hidden) return;
   procLogs.busy = true;
   try {
     const q = procLogs.after > 0 ? "?after=" + procLogs.after : "?tail=500";
@@ -704,15 +794,15 @@ async function pollProcLogs() {
     const p = data.process || {};
     const logs = data.logs || {};
 
-    // A restart starts a new process with a fresh log: the next poll reads
-    // it from the top.
     if (procLogs.pid !== null && p.pid !== procLogs.pid && procLogs.after > 0) {
       procLogs.pid = p.pid;
       procLogs.after = 0;
+      $("procLogsOutput").textContent = "";
+      procLogs.lines = 0;
       noteProcLog("restarted (pid " + p.pid + ")");
-      return;
+    } else {
+      procLogs.pid = p.pid;
     }
-    procLogs.pid = p.pid;
 
     if (logs.truncated && procLogs.after === 0) noteProcLog("older lines dropped");
     appendProcLines(logs.lines || []);
@@ -750,7 +840,7 @@ async function stopAllProcesses() {
   try {
     await api("/processes/stop-all", {
       method: "POST",
-      body: { timeoutSeconds: 3 },
+      body: { graceSeconds: 3 },
     });
     setStatus("stopped all processes");
   } catch (err) {
@@ -859,13 +949,18 @@ async function sendUpload() {
 // --- Sidebar --------------------------------------------------------------
 
 const SIDEBAR_KEY = "ngodingmcp.sidebarCollapsed";
+const mobileMedia = window.matchMedia ? window.matchMedia("(max-width: 720px)") : null;
+
+function isMobileViewport() {
+  return mobileMedia ? mobileMedia.matches : window.innerWidth <= 720;
+}
 
 function setSidebarCollapsed(collapsed, remember = true) {
   $("layout").classList.toggle("sidebar-collapsed", collapsed);
   const btn = $("btnSidebar");
   btn.setAttribute("aria-expanded", String(!collapsed));
   btn.title = (collapsed ? "Show sidebar" : "Collapse sidebar") + " (Ctrl+B)";
-  if (remember) {
+  if (remember && !isMobileViewport()) {
     try { localStorage.setItem(SIDEBAR_KEY, collapsed ? "1" : "0"); } catch (_) { /* storage blocked */ }
   }
 }
@@ -876,7 +971,11 @@ function toggleSidebar() {
 
 {
   let collapsed = false;
-  try { collapsed = localStorage.getItem(SIDEBAR_KEY) === "1"; } catch (_) { /* storage blocked */ }
+  if (isMobileViewport()) {
+    collapsed = true;
+  } else {
+    try { collapsed = localStorage.getItem(SIDEBAR_KEY) === "1"; } catch (_) { /* storage blocked */ }
+  }
   // Apply without the slide animation on page load.
   $("layout").style.transition = "none";
   setSidebarCollapsed(collapsed, false);
@@ -1087,6 +1186,7 @@ async function switchWorkspace(name) {
     state.currentPath = null;
     state.dirty = false;
     state.activeNode = null;
+    state.expandedDirs.clear();
     editor.value = "";
     syntaxBanner.classList.add("hidden");
     searchResults.classList.add("hidden");
@@ -1114,7 +1214,12 @@ async function switchWorkspace(name) {
 // --- Wiring ---------------------------------------------------------------
 
 $("btnSidebar").addEventListener("click", toggleSidebar);
+$("sidebarBackdrop").addEventListener("click", () => setSidebarCollapsed(true, false));
 document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && isMobileViewport() && !$("layout").classList.contains("sidebar-collapsed")) {
+    setSidebarCollapsed(true, false);
+    return;
+  }
   if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && !ev.altKey && ev.key.toLowerCase() === "b") {
     ev.preventDefault();
     toggleSidebar();
@@ -1160,6 +1265,7 @@ async function saveSettings() {
     $("settingsModal").close();
     setStatus("settings saved — most changes apply after restart", false);
   } catch (err) {
+    setStatus("settings: " + err.message, true);
     alert("settings: " + err.message);
   }
 }
@@ -1194,9 +1300,38 @@ editor.addEventListener("keydown", (ev) => {
     ev.preventDefault();
     const start = editor.selectionStart;
     const end = editor.selectionEnd;
+    if (ev.shiftKey) {
+      const before = editor.value.slice(0, start);
+      const lineStart = before.lastIndexOf("\n") + 1;
+      const linePrefix = editor.value.slice(lineStart, lineStart + 2);
+      const removeLen = linePrefix === "  " ? 2 : (editor.value[lineStart] === " " || editor.value[lineStart] === "\t" ? 1 : 0);
+      if (removeLen > 0) {
+        editor.value = editor.value.slice(0, lineStart) + editor.value.slice(lineStart + removeLen);
+        editor.selectionStart = Math.max(lineStart, start - removeLen);
+        editor.selectionEnd = Math.max(lineStart, end - removeLen);
+        markDirty();
+      }
+      return;
+    }
     editor.value = editor.value.slice(0, start) + "  " + editor.value.slice(end);
     editor.selectionStart = editor.selectionEnd = start + 2;
     markDirty();
+    return;
+  }
+  if (ev.key === "Enter") {
+    const start = editor.selectionStart;
+    const end = editor.selectionEnd;
+    const before = editor.value.slice(0, start);
+    const lineStart = before.lastIndexOf("\n") + 1;
+    const currentLine = before.slice(lineStart);
+    const indentMatch = currentLine.match(/^[ \t]*/);
+    const indent = indentMatch ? indentMatch[0] : "";
+    if (indent.length > 0) {
+      ev.preventDefault();
+      editor.value = editor.value.slice(0, start) + "\n" + indent + editor.value.slice(end);
+      editor.selectionStart = editor.selectionEnd = start + 1 + indent.length;
+      markDirty();
+    }
   }
 });
 
@@ -1246,7 +1381,14 @@ $("btnRefreshProc").addEventListener("click", loadProcesses);
 $("btnStopAllProc").addEventListener("click", stopAllProcesses);
 $("btnCloseProcLogs").addEventListener("click", closeProcLogs);
 $("procLogsModal").addEventListener("close", () => { if (procLogs.name) closeProcLogs(); });
-$("procLogsModal").addEventListener("click", (ev) => { if (ev.target === $("procLogsModal")) closeProcLogs(); });
+// Any modal closes when its backdrop (the <dialog> element itself) is clicked,
+// mirroring Escape. The process-logs modal has extra cleanup, wired to its
+// "close" event above.
+document.querySelectorAll("dialog.modal").forEach((dialog) => {
+  dialog.addEventListener("click", (ev) => {
+    if (ev.target === dialog) dialog.close();
+  });
+});
 $("btnProcLogsStop").addEventListener("click", stopProcLogsProcess);
 $("btnProcLogsRestart").addEventListener("click", () => { if (procLogs.name) restartProcess(procLogs.name, $("btnProcLogsRestart")); });
 $("btnProcLogsClear").addEventListener("click", () => { $("procLogsOutput").textContent = ""; procLogs.lines = 0; });
@@ -1295,7 +1437,15 @@ function showVersion(info) {
     if (info.processesEnabled) {
       $("procPanel").classList.remove("hidden");
       await loadProcesses();
-      setInterval(loadProcesses, 3000);
+      setInterval(() => {
+        if (!document.hidden) loadProcesses();
+      }, 3000);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) {
+          loadProcesses();
+          if (procLogs.name) pollProcLogs();
+        }
+      });
     }
   } catch (err) {
     setStatus(err.message, true);

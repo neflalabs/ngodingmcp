@@ -55,7 +55,7 @@ const (
 
 // New returns a UI backed by ws.
 func New(ws *workspace.Workspace, a *auth.Authenticator, version string) *UI {
-	return &UI{ws: ws, auth: a, version: version}
+	return &UI{ws: ws, auth: a, version: version, loginFailures: map[string]*loginAttempts{}}
 }
 
 // SetProcesses attaches the background process manager. When set, the UI gains
