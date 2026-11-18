@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
     tags:
       - "v20*"
   workflow_dispatch:
@@ -62,7 +64,7 @@ jobs:
         id: calver
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "push" ]; then
+          if [ "${{ github.ref_type }}" = "tag" ]; then
             VERSION="${{ github.ref_name }}"
             CREATE_TAG="false"
           elif [ -n "${{ inputs.version }}" ]; then
@@ -89,7 +91,7 @@ jobs:
           echo "create_tag=$CREATE_TAG" >> "$GITHUB_OUTPUT"
           echo "Resolved release version: $VERSION (create_tag=$CREATE_TAG)"
 
-      - name: Tag commit (workflow_dispatch)
+      - name: Tag commit
         if: steps.calver.outputs.create_tag == 'true'
         run: |
           git config user.name "github-actions[bot]"
