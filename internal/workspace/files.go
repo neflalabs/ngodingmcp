@@ -19,20 +19,26 @@ type Entry struct {
 	Size  int64  `json:"size"`
 }
 
+const maxListFilesEntries = 2000
+
 // ListFiles lists entries in rel. If recursive, it walks the whole subtree.
-func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, error) {
+// Recursive listings are capped at maxListFilesEntries entries (dependency
+// and build-cache directories are skipped; point path directly at one to
+// list it) and report truncated when that cap is hit.
+func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error) {
 	full, err := w.resolve(rel)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	info, err := os.Stat(full)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if !info.IsDir() {
-		return nil, ErrNotDir
+		return nil, false, ErrNotDir
 	}
 	var entries []Entry
+	var truncated bool
 	if recursive {
 		err = filepath.WalkDir(full, func(p string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
@@ -41,8 +47,15 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, error) {
 			if skip, err := w.skipBlocked(full, p, d); skip {
 				return err
 			}
+			if skipHeavy(full, p, d) {
+				return filepath.SkipDir
+			}
 			if p == full {
 				return nil
+			}
+			if len(entries) >= maxListFilesEntries {
+				truncated = true
+				return filepath.SkipAll
 			}
 			if !d.IsDir() && !w.walkFileSafe(p, d) {
 				return nil // symlink escaping the root (or broken link)
@@ -60,12 +73,12 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, error) {
 			return nil
 		})
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	} else {
 		des, err := os.ReadDir(full)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		for _, d := range des {
 			if w.blocked(filepath.Join(full, d.Name())) {
@@ -73,7 +86,7 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, error) {
 			}
 			di, err := d.Info()
 			if err != nil {
-				return nil, err
+				return nil, false, err
 			}
 			entries = append(entries, Entry{
 				Name:  d.Name(),
@@ -89,7 +102,7 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, error) {
 		}
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
-	return entries, nil
+	return entries, truncated, nil
 }
 
 // Info describes a path.

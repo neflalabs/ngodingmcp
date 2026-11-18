@@ -3,7 +3,6 @@ package workspace
 import (
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -129,64 +128,51 @@ func (w *Workspace) SearchText(rel, pattern, glob string, maxResults int) ([]Mat
 	if maxResults <= 0 {
 		maxResults = 100
 	}
-	var matches []Match
-	stop := errors.New("stop")
-	err = filepath.WalkDir(full, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if skip, err := w.skipBlocked(full, p, d); skip {
-			return err
-		}
-		if skipHeavy(full, p, d) {
-			return filepath.SkipDir
-		}
-		if !d.IsDir() && !w.walkFileSafe(p, d) {
-			return nil // symlink escaping the root (or broken link)
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		relp := w.relPath(p)
+	files, err := w.walkFiltered(full, func(relp string) bool {
 		target := relp
 		if !matchFullPath {
 			target = path.Base(relp)
 		}
-		if !globRe.MatchString(target) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil // skip unreadable file instead of aborting the search
-		}
-		if info.Size() > w.MaxRead() {
-			return nil
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
-		if looksBinary(data) {
-			return nil
-		}
-		for i, line := range strings.Split(string(data), "\n") {
-			if re.MatchString(line) {
-				text := strings.TrimRight(line, "\r")
-				matches = append(matches, Match{Path: relp, Line: i + 1, Text: clipAroundMatch(re, text, MaxMatchTextBytes)})
-				if len(matches) >= maxResults {
-					return stop
-				}
-			}
-		}
-		return nil
+		return globRe.MatchString(target)
 	})
-	if err != nil && !errors.Is(err, stop) {
+	if err != nil {
 		return nil, err
 	}
+	type fileResult struct {
+		matches []Match
+	}
+	results := mapFilesUntil(files, maxResults, func(p string, budget int) (fileResult, int) {
+		data, _, ok := w.readForBulk(p)
+		if !ok {
+			return fileResult{}, 0
+		}
+		relpath := w.relPath(p)
+		var kept []Match
+		for i, line := range strings.Split(string(data), "\n") {
+			if len(kept) >= budget {
+				break
+			}
+			if re.MatchString(line) {
+				text := strings.TrimRight(line, "\r")
+				kept = append(kept, Match{Path: relpath, Line: i + 1, Text: clipAroundMatch(re, text, MaxMatchTextBytes)})
+			}
+		}
+		return fileResult{matches: kept}, len(kept)
+	})
+	var matches []Match
+	for _, r := range results {
+		if len(matches) >= maxResults {
+			break
+		}
+		for _, m := range r.matches {
+			matches = append(matches, m)
+			if len(matches) >= maxResults {
+				break
+			}
+		}
+	}
 	return matches, nil
+
 }
 
 // SearchReplaceFileResult holds the result for one file in a SearchReplace operation.
@@ -249,78 +235,64 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 		Replacement: replacement,
 		DryRun:      dryRun,
 	}
-	var planned []plannedEdit
-
-	err = filepath.WalkDir(full, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if skip, err := w.skipBlocked(full, p, d); skip {
-			return err
-		}
-		if skipHeavy(full, p, d) {
-			return filepath.SkipDir
-		}
-		if !d.IsDir() && !w.walkFileSafe(p, d) {
-			return nil // symlink escaping the root (or broken link)
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		relp := w.relPath(p)
+	files, err := w.walkFiltered(full, func(relp string) bool {
 		target := relp
 		if !matchFullPath {
 			target = path.Base(relp)
 		}
-		if !globRe.MatchString(target) {
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if info.Size() > w.MaxRead() {
-			return nil
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
-		if looksBinary(data) {
-			return nil
-		}
-		content := string(data)
-		count := len(re.FindAllString(content, -1))
-		if count == 0 {
-			return nil
-		}
-		// Check truncation before adding this file.
-		if result.FilesChanged >= maxFiles {
-			result.Truncated = true
-			return filepath.SkipAll
-		}
-		result.Files = append(result.Files, SearchReplaceFileResult{
-			Path:         relp,
-			Replacements: count,
-			Changed:      !dryRun,
-		})
-		result.FilesChanged++
-		result.TotalReplacements += count
-		if !dryRun {
-			planned = append(planned, plannedEdit{
-				path:     relp,
-				original: content,
-				updated:  re.ReplaceAllString(content, replacement),
-			})
-		}
-		return nil
+		return globRe.MatchString(target)
 	})
 	if err != nil {
 		return SearchReplaceResult{}, err
 	}
+	type fileResult struct {
+		matched      bool
+		relpath      string
+		count        int
+		original     string
+		updated      string
+	}
+	results := mapFilesUntil(files, maxFiles, func(p string, budget int) (fileResult, int) {
+		data, _, ok := w.readForBulk(p)
+		if !ok {
+			return fileResult{}, 0
+		}
+		content := string(data)
+		count := len(re.FindAllString(content, -1))
+		if count == 0 {
+			return fileResult{}, 0
+		}
+		fr := fileResult{matched: true, relpath: w.relPath(p), count: count, original: content}
+		if !dryRun {
+			fr.updated = re.ReplaceAllString(content, replacement)
+		}
+		return fr, 1
+	})
+	var planned []plannedEdit
+	for _, fr := range results {
+		if !fr.matched {
+			continue
+		}
+		if result.FilesChanged >= maxFiles {
+			result.Truncated = true
+			break
+		}
+		result.Files = append(result.Files, SearchReplaceFileResult{
+			Path:         fr.relpath,
+			Replacements: fr.count,
+			Changed:      !dryRun,
+		})
+		result.FilesChanged++
+		result.TotalReplacements += fr.count
+		if !dryRun {
+			planned = append(planned, plannedEdit{
+				path:     fr.relpath,
+				original: fr.original,
+				updated:  fr.updated,
+			})
+		}
+	}
+	
 	if len(planned) == 0 {
 		return result, nil
 	}

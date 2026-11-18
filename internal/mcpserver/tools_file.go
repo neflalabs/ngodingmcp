@@ -93,17 +93,18 @@ type listFilesArgs struct {
 }
 
 type listFilesOut struct {
-	Path    string            `json:"path"`
-	Entries []workspace.Entry `json:"entries"`
+	Path      string            `json:"path"`
+	Entries   []workspace.Entry `json:"entries"`
+	Truncated bool              `json:"truncated,omitempty"`
 }
 
 func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_files",
-		Description: "List files and directories inside the workspace, one level or recursively.",
+		Description: "List files and directories inside the workspace, one level or recursively. Recursive listings are capped at 2000 entries and dependency/build-cache directories are skipped; pass one as path to list it.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in listFilesArgs) (*mcp.CallToolResult, listFilesOut, error) {
-		entries, err := ws.ListFiles(in.Path, in.Recursive)
+		entries, truncated, err := ws.ListFiles(in.Path, in.Recursive)
 		if err != nil {
 			return nil, listFilesOut{}, err
 		}
@@ -118,7 +119,10 @@ func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 		if b.Len() == 0 {
 			b.WriteString("(empty)\n")
 		}
-		return textResult(b.String()), listFilesOut{Path: in.Path, Entries: entries}, nil
+		if truncated {
+			b.WriteString("... listing truncated at 2000 entries; narrow with path\n")
+		}
+		return textResult(b.String()), listFilesOut{Path: in.Path, Entries: entries, Truncated: truncated}, nil
 	})
 }
 

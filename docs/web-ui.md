@@ -96,7 +96,7 @@ discovery dan flow OAuth (`/.well-known/...`, `/oauth/...`) terbuka.
 | Endpoint | Fungsi |
 |---|---|
 | `GET /api/info` | info server, termasuk `version` dan `built` |
-| `GET /api/tree` | file tree |
+| `GET /api/tree` | file tree (`?recursive=1`: maks 2000 entri, direktori berat diskip, respons `truncated: true` bila terpotong) |
 | `GET /api/file`, `PUT /api/file`, `DELETE /api/file` | baca, simpan, hapus file |
 | `POST /api/mkdir`, `POST /api/rename` | buat folder, rename/pindah |
 | `GET /api/search`, `POST /api/search-replace` | search, search & replace |

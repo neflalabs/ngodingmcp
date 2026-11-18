@@ -70,7 +70,7 @@ func TestSensitiveBlockingAndOverride(t *testing.T) {
 		t.Fatalf("recursive Delete over .git err = %v, want ErrSensitive", err)
 	}
 
-	entries, err := ws.ListFiles(".", true)
+	entries, _, err := ws.ListFiles(".", true)
 	if err != nil {
 		t.Fatal(err)
 	}

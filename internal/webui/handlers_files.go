@@ -80,7 +80,7 @@ func (u *UI) handleInfo(w http.ResponseWriter, r *http.Request) {
 func (u *UI) handleTree(w http.ResponseWriter, r *http.Request) {
 	dir := r.URL.Query().Get("path")
 	recursive := r.URL.Query().Get("recursive") == "1"
-	entries, err := u.ws.ListFiles(dir, recursive)
+	entries, truncated, err := u.ws.ListFiles(dir, recursive)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -88,7 +88,7 @@ func (u *UI) handleTree(w http.ResponseWriter, r *http.Request) {
 	if entries == nil {
 		entries = []workspace.Entry{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"path": dir, "entries": entries})
+	writeJSON(w, http.StatusOK, map[string]any{"path": dir, "entries": entries, "truncated": truncated})
 }
 
 func (u *UI) handleGetFile(w http.ResponseWriter, r *http.Request) {

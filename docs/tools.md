@@ -37,6 +37,12 @@ Perilaku umum:
   ke direktori itu (`path: "node_modules"`) tetap bisa. Pengabaian ini diam-diam
   dan bukan batas keamanan. Hasil `search_text` dipotong per baris (~300 byte di
   sekitar kecocokan) dan teks output dibatasi 64 KiB.
+- **Walker bulk berjalan paralel**: `search_text`, `search_and_replace`,
+  `workspace_stats`, dan `count_tokens` memproses file dengan worker pool;
+  urutan output tetap deterministik.
+- **`list_files` rekursif dibatasi 2000 entri** dan melewati direktori berat;
+  output yang menyisakan lebih banyak ditandai `truncated: true` (di MCP:
+  notice "listing truncated at 2000 entries").
 - **Write atomik**: setiap tulis memakai temp file lalu `rename`, jadi tidak ada
   file setengah jadi.
 - **Batas ukuran baca** (`--max-file-bytes`, default 2 MiB) dan deteksi file biner.

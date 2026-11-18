@@ -1,7 +1,7 @@
 package workspace
 
 import (
-	"io/fs"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -41,72 +41,59 @@ type WorkspaceStats struct {
 // Stats walks the entire workspace and returns aggregate statistics.
 // It skips .git/, binary files, and files exceeding maxRead.
 func (w *Workspace) Stats() (WorkspaceStats, error) {
+	files, err := w.walkFiltered(w.Root(), nil)
+	if err != nil {
+		return WorkspaceStats{}, err
+	}
+	type rec struct {
+		ok    bool
+		rel   string
+		ext   string
+		lines int
+		sz    int64
+		mod   time.Time
+	}
+	results := mapFiles(files, func(p string) rec {
+		data, fi, ok := w.readForBulk(p)
+		if !ok {
+			return rec{}
+		}
+		rel := w.relPath(p)
+		ext := filepath.Ext(rel)
+		if ext == "" {
+			ext = "(no ext)"
+		}
+		return rec{
+			ok:    true,
+			rel:   rel,
+			ext:   ext,
+			lines: countLines(string(data)),
+			sz:    fi.Size(),
+			mod:   fi.ModTime(),
+		}
+	})
+
 	byExt := make(map[string]ExtStats)
 	var allLargest []LargestFile
 	var allRecent []RecentFile
-
 	var totalFiles int
 	var totalLines int
 	var totalBytes int64
 
-	err := filepath.WalkDir(w.Root(), func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
+	for _, r := range results {
+		if !r.ok {
+			continue
 		}
-		if skip, err := w.skipBlocked(w.Root(), p, d); skip {
-			return err
-		}
-		if skipHeavy(w.Root(), p, d) {
-			return filepath.SkipDir
-		}
-		if !d.IsDir() && !w.walkFileSafe(p, d) {
-			return nil // symlink escaping the root (or broken link)
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		info, err := d.Info()
-		if err != nil {
-			return nil // skip unreadable
-		}
-		if info.Size() > w.MaxRead() {
-			return nil // too large
-		}
-		data, err := os.ReadFile(p)
-		if err != nil {
-			return nil
-		}
-		if looksBinary(data) {
-			return nil
-		}
-
-		relp := w.relPath(p)
-		ext := filepath.Ext(d.Name())
-		if ext == "" {
-			ext = "(no ext)"
-		}
-		lines := countLines(string(data))
-		sz := info.Size()
-
 		totalFiles++
-		totalLines += lines
-		totalBytes += sz
-
-		es := byExt[ext]
+		totalLines += r.lines
+		totalBytes += r.sz
+		es := byExt[r.ext]
 		es.Files++
-		es.Lines += lines
-		es.Bytes += sz
-		byExt[ext] = es
-
-		allLargest = append(allLargest, LargestFile{Path: relp, Lines: lines})
-		allRecent = append(allRecent, RecentFile{Path: relp, ModTime: info.ModTime()})
-		return nil
-	})
-	if err != nil {
-		return WorkspaceStats{}, err
+		es.Lines += r.lines
+		es.Bytes += r.sz
+		byExt[r.ext] = es
+		allLargest = append(allLargest, LargestFile{Path: r.rel, Lines: r.lines})
+		allRecent = append(allRecent, RecentFile{Path: r.rel, ModTime: r.mod})
 	}
 
 	// Sort largest files by lines desc, keep top 5.
@@ -175,41 +162,40 @@ func (w *Workspace) countOne(rel string) (TokenCount, error) {
 	// Directory: walk recursively and aggregate.
 	var totalBytes int64
 	var totalLines int
-	err = filepath.WalkDir(full, func(p string, d fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if skip, err := w.skipBlocked(full, p, d); skip {
-			return err
-		}
-		if skipHeavy(full, p, d) {
-			return filepath.SkipDir
-		}
-		if !d.IsDir() && !w.walkFileSafe(p, d) {
-			return nil // symlink escaping the root (or broken link)
-		}
-		if d.IsDir() {
-			if d.Name() == ".git" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		fi, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		sz := fi.Size()
-		totalBytes += sz
-		// Count lines for non-binary text files within size limit.
-		if sz <= w.MaxRead() {
-			if data, err := os.ReadFile(p); err == nil && !looksBinary(data) {
-				totalLines += countLines(string(data))
-			}
-		}
-		return nil
-	})
+	files, err := w.walkFiltered(full, nil)
 	if err != nil {
 		return TokenCount{}, err
+	}
+	type rec struct {
+		sz    int64
+		lines int
+	}
+	totals := mapFiles(files, func(p string) rec {
+		// Sum sizes for all files (binary or not), count lines only for
+		// text within the read limit — mirror the original sequential semantics.
+		f, err := os.Open(p)
+		if err != nil {
+			return rec{}
+		}
+		fi, err := f.Stat()
+		if err != nil {
+			_ = f.Close()
+			return rec{}
+		}
+		sz := fi.Size()
+		var lines int
+		if sz <= w.MaxRead() {
+			data, err := io.ReadAll(f)
+			if err == nil && !looksBinary(data) {
+				lines = countLines(string(data))
+			}
+		}
+		_ = f.Close()
+		return rec{sz: sz, lines: lines}
+	})
+	for _, r := range totals {
+		totalBytes += r.sz
+		totalLines += r.lines
 	}
 	// Ensure directory path ends with /
 	if relp == "" || relp == "." {

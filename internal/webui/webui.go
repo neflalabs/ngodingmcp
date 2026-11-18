@@ -62,13 +62,18 @@ func New(ws *workspace.Workspace, a *auth.Authenticator, version string) *UI {
 // a process panel and its REST endpoints.
 func (u *UI) SetProcesses(p *procman.Manager) { u.procs = p }
 
-// Static serves embedded CSS/JS under /static/.
+// Static serves embedded CSS/JS under /static/. Assets are cached for one
+// hour; browsers revalidate afterwards.
 func (u *UI) Static() http.Handler {
 	sub, err := fs.Sub(webFS, "web")
 	if err != nil {
 		panic(err)
 	}
-	return http.StripPrefix("/static/", http.FileServer(http.FS(sub)))
+	fileServer := http.FileServer(http.FS(sub))
+	return http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		fileServer.ServeHTTP(w, r)
+	}))
 }
 
 // Index serves the main editor page.

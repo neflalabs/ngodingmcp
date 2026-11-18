@@ -172,7 +172,7 @@ func TestListFiles(t *testing.T) {
 	mustWrite(t, ws, "z.txt", "z")
 	mustWrite(t, ws, "dir/a.txt", "a")
 
-	entries, err := ws.ListFiles("", false)
+	entries, _, err := ws.ListFiles("", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestListFiles(t *testing.T) {
 		t.Fatalf("dirs should sort first: %+v", entries[0])
 	}
 
-	all, err := ws.ListFiles("", true)
+	all, _, err := ws.ListFiles("", true)
 	if err != nil {
 		t.Fatal(err)
 	}

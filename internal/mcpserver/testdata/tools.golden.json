@@ -1178,7 +1178,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "List files and directories inside the workspace, one level or recursively.",
+    "description": "List files and directories inside the workspace, one level or recursively. Recursive listings are capped at 2000 entries and dependency/build-cache directories are skipped; pass one as path to list it.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1229,6 +1229,9 @@
         },
         "path": {
           "type": "string"
+        },
+        "truncated": {
+          "type": "boolean"
         }
       },
       "required": [

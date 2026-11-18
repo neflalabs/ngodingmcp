@@ -1,6 +1,7 @@
 package workspace
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -61,5 +62,51 @@ func TestSearchTextClipsLongLines(t *testing.T) {
 	}
 	if !strings.HasPrefix(txt, "…") || !strings.HasSuffix(txt, "…") {
 		t.Fatalf("missing ellipses: %q", txt)
+	}
+}
+
+func TestListFilesRecursiveSkipsHeavyAndCaps(t *testing.T) {
+	ws := newTestWorkspace(t)
+	mustWrite(t, ws, "src/a.js", "x\n")
+	mustWrite(t, ws, "node_modules/pkg/c.js", "x\n")
+
+	// Skip heavy dirs entirely.
+	entries, truncated, err := ws.ListFiles("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if truncated {
+		t.Fatal("unexpected truncation for a small tree")
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Path, "node_modules") {
+			t.Fatalf("listing leaked %s", e.Path)
+		}
+	}
+
+	// Explicit path at a heavy dir still lists it.
+	entries, _, err = ws.ListFiles("node_modules", true)
+	if err != nil || len(entries) == 0 {
+		t.Fatalf("explicit node_modules listing: %v %+v", err, entries)
+	}
+}
+
+func TestListFilesRecursiveTruncated(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping the 2000-entry stress test in -short mode")
+	}
+	ws := newTestWorkspace(t)
+	for i := 0; i < maxListFilesEntries+10; i++ {
+		mustWrite(t, ws, fmt.Sprintf("f%04d.txt", i), "x\n")
+	}
+	entries, truncated, err := ws.ListFiles("", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated {
+		t.Fatal("expected truncated=true past the cap")
+	}
+	if len(entries) != maxListFilesEntries {
+		t.Fatalf("entries = %d, want %d", len(entries), maxListFilesEntries)
 	}
 }
