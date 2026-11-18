@@ -171,7 +171,13 @@ func (u *UI) LoginSubmit(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   cookieMaxAge,
 		HttpOnly: true,
 		Secure:   secure,
-		SameSite: http.SameSiteStrictMode,
+		// Lax, not Strict: the OAuth consent page is reached through a
+		// cross-site top-level navigation from the MCP client. Strict
+		// withholds the cookie on that GET, so a signed-in user would be
+		// shown the token form. Lax still withholds it from cross-site
+		// state-changing requests (POST), which the consent handler
+		// additionally guards with a CSRF token.
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
@@ -185,7 +191,7 @@ func (u *UI) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }

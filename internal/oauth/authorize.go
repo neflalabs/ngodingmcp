@@ -22,6 +22,20 @@ type consentData struct {
 	CSRFToken     string
 }
 
+// baseConsent fills the consent form fields common to the initial render and
+// every re-render after an error.
+func baseConsent(in *authorizeInput) consentData {
+	return consentData{
+		ClientName:    in.client.ClientName,
+		ClientID:      in.clientID,
+		RedirectURI:   in.redirectURI,
+		State:         in.state,
+		Scope:         in.scope,
+		CodeChallenge: in.codeChallenge,
+		Resource:      in.resource,
+	}
+}
+
 // authorizeInput is the validated subset of the authorization request.
 type authorizeInput struct {
 	client        registeredClient
@@ -129,7 +143,11 @@ func (s *Server) redirectError(w http.ResponseWriter, r *http.Request, redirectU
 	}
 	q.Set("iss", s.Issuer(r))
 	u.RawQuery = q.Encode()
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	message := "Authorization failed."
+	if desc != "" {
+		message = "Authorization failed: " + desc
+	}
+	s.renderRedirect(w, u.String(), message)
 }
 
 // handleAuthorize renders the consent page.
@@ -146,16 +164,8 @@ func (s *Server) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data := consentData{
-		ClientName:    in.client.ClientName,
-		ClientID:      in.clientID,
-		RedirectURI:   in.redirectURI,
-		State:         in.state,
-		Scope:         in.scope,
-		CodeChallenge: in.codeChallenge,
-		Resource:      in.resource,
-		NeedsToken:    !s.hasSession(r),
-	}
+	data := baseConsent(in)
+	data.NeedsToken = !s.hasSession(r)
 	if s.hasSession(r) {
 		// Bind a single-use CSRF token to the session for the consent
 		// form. Without a session the shared token in the form is the
@@ -197,13 +207,26 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.hasSession(r) {
-		tok := r.PostForm.Get("csrf_token")
+	csrfToken := r.PostForm.Get("csrf_token")
+	hasSession := s.hasSession(r)
+	if csrfToken != "" {
+		// The page was rendered for a signed-in session and carries a
+		// single-use CSRF token bound to it.
+		if !hasSession {
+			// The session expired or was revoked between loading the
+			// page and submitting it. Fall back to the token form
+			// instead of a dead end.
+			data := baseConsent(in)
+			data.NeedsToken = true
+			data.ErrorMsg = "Session expired. Enter the server token to continue."
+			s.renderConsent(w, data, nil)
+			return
+		}
 		csrfOK := false
 		s.mu.Lock()
-		entry, ok := s.csrfTokens[tok]
+		entry, ok := s.csrfTokens[csrfToken]
 		if ok {
-			delete(s.csrfTokens, tok)
+			delete(s.csrfTokens, csrfToken)
 			csrfOK = !time.Now().After(entry.exp) && entry.session == s.sessionKey(r)
 		}
 		s.mu.Unlock()
@@ -211,23 +234,15 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 			// Re-render the consent with a fresh CSRF token and an
 			// inline error instead of a dead-end plain-text 403; the
 			// user can approve in one more click.
-			freshCSRF, freshErr := randomID(16)
-			if freshErr == nil {
+			data := baseConsent(in)
+			if freshCSRF, err := randomID(16); err == nil {
 				s.mu.Lock()
 				s.csrfTokens[freshCSRF] = csrfEntry{session: s.sessionKey(r), exp: time.Now().Add(10 * time.Minute)}
 				s.mu.Unlock()
+				data.CSRFToken = freshCSRF
 			}
-			s.renderConsent(w, consentData{
-				ClientName:    in.client.ClientName,
-				ClientID:      in.clientID,
-				RedirectURI:   in.redirectURI,
-				State:         in.state,
-				Scope:         in.scope,
-				CodeChallenge: in.codeChallenge,
-				Resource:      in.resource,
-				CSRFToken:     freshCSRF,
-				ErrorMsg:      "Session expired, please try again.",
-			}, nil)
+			data.ErrorMsg = "Session expired, please try again."
+			s.renderConsent(w, data, nil)
 			return
 		}
 	}
@@ -242,21 +257,18 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Approval requires authentication.
-	if !s.hasSession(r) {
+	// Approval requires authentication. A form rendered without a session
+	// (the token form) is authenticated by the shared token even when the
+	// browser now sends a session cookie: the cross-site GET that rendered
+	// it may not have carried the SameSite cookie, so that page had no CSRF
+	// token to send back.
+	if csrfToken == "" {
 		token := strings.TrimSpace(r.PostForm.Get("token"))
 		if s.auth == nil || !s.auth.Validate(token) {
-			s.renderConsent(w, consentData{
-				ClientName:    in.client.ClientName,
-				ClientID:      in.clientID,
-				RedirectURI:   in.redirectURI,
-				State:         in.state,
-				Scope:         in.scope,
-				CodeChallenge: in.codeChallenge,
-				Resource:      in.resource,
-				NeedsToken:    true,
-				ErrorMsg:      "Invalid token. Try again.",
-			}, nil)
+			data := baseConsent(in)
+			data.NeedsToken = true
+			data.ErrorMsg = "Invalid token. Try again."
+			s.renderConsent(w, data, nil)
 			return
 		}
 	}
@@ -290,7 +302,7 @@ func (s *Server) handleAuthorizeSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	qq.Set("iss", s.Issuer(r))
 	u.RawQuery = qq.Encode()
-	http.Redirect(w, r, u.String(), http.StatusFound)
+	s.renderRedirect(w, u.String(), "Authorization complete. Returning to the application…")
 }
 
 // hasSession reports whether the request carries a valid login session.
@@ -298,10 +310,56 @@ func (s *Server) hasSession(r *http.Request) bool {
 	return s.auth != nil && s.auth.Check(r)
 }
 
+// consentCSP builds the Content-Security-Policy for the consent page.
+//
+// Chrome applies form-action to every hop of the navigation started by a form
+// submission, not just to the form's action URL. The consent form posts to
+// /oauth/authorize ('self'), and that handler then redirects to the client's
+// registered redirect_uri. Without whitelisting that origin the browser
+// cancels the final redirect and the consent page looks like it did nothing.
+// The redirect URI is exact-matched against the registered list before the
+// page is rendered, so allowing its origin does not widen the policy beyond
+// what the client already registered.
+func consentCSP(redirectURI string) string {
+	const base = "default-src 'self'; script-src 'self'; style-src 'self'; " +
+		"img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+	formAction := "'self'"
+	if u, err := url.Parse(redirectURI); err == nil && u.Scheme != "" && u.Host != "" {
+		formAction += " " + u.Scheme + "://" + u.Host
+	}
+	return base + "; form-action " + formAction
+}
+
+// renderRedirect renders a small interstitial that forwards the browser to
+// target with a meta refresh and a visible link.
+//
+// A 302 would be the natural response, but Chrome applies the consent page's
+// form-action CSP to redirects that follow the form submission. If the browser
+// or a content blocker cancels that hop, the consent page appears to do
+// nothing. A plain 200 document with a meta refresh is not a redirect, so
+// form-action does not apply to it, and the link gives the user a fallback
+// when even the automatic hop is blocked.
+func (s *Server) renderRedirect(w http.ResponseWriter, target, message string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; base-uri 'none'")
+	var buf bytes.Buffer
+	err := redirectTemplate().Execute(&buf, struct {
+		URL     string
+		Message string
+	}{target, message})
+	if err != nil {
+		http.Error(w, "could not render redirect page", http.StatusInternalServerError)
+		return
+	}
+	_, _ = buf.WriteTo(w)
+}
+
 // renderConsent renders the consent page.
 func (s *Server) renderConsent(w http.ResponseWriter, data consentData, err error) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Security-Policy", consentCSP(data.RedirectURI))
 	var buf bytes.Buffer
 	if err := consentTemplate().Execute(&buf, data); err != nil {
 		http.Error(w, "could not render consent page", http.StatusInternalServerError)

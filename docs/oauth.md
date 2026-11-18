@@ -17,7 +17,10 @@ Token statis (`Authorization: Bearer` / `X-API-Key`) tetap diterima.
    atau memakai `client_id` yang sudah terdaftar.
 5. Client membuka `GET /oauth/authorize` dengan PKCE (`S256`) → browser menampilkan **halaman consent**
    NgodingMCP. Untuk login, masukkan token server (atau gunakan cookie sesi Web UI yang sudah ada).
-6. Setelah approve, redirect berisi `code` dan `iss` (RFC 9207). Client menukarnya di `POST /oauth/token`
+6. Setelah approve, browser menerima halaman perantara kecil yang meneruskan ke `redirect_uri` lewat
+   meta refresh dan tautan **Continue**. Halaman ini menghindari pembatalan redirect oleh kebijakan
+   `form-action`/pemblokir konten setelah submit form; URL tujuannya berisi `code` dan `iss` (RFC 9207).
+   Client menukarnya di `POST /oauth/token`
    dengan `code_verifier` (S256) dan wajib membawa `resource` — server menerima origin issuer
    (`https://mcp.example.com`) maupun URL endpoint MCP (`https://mcp.example.com/mcp`); bentuk lain
    ditolak.

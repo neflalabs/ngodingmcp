@@ -6,14 +6,20 @@
   `/mcp` **hanya** menerima header kredensial itu; cookie browser tidak diterima,
   jadi cookie yang bocor tidak bisa dipakai replay ke `/mcp`.
 - Login browser memakai cookie sesi **opaque server-side** (ID acak 32 byte),
-  bukan token: HttpOnly, `SameSite=Strict`, `Secure` saat TLS/https, sliding
-  TTL 7 hari. Logout mencabut sesi di server. Restart server = semua sesi
-  Web UI hilang. Login dibatasi 5 percobaan gagal per menit per IP.
+  bukan token: HttpOnly, `SameSite=Lax`, `Secure` saat TLS/https, sliding
+  TTL 7 hari. `Lax` (bukan `Strict`) agar cookie ikut pada navigasi top-level
+  lintas-situs menuju halaman consent OAuth; POST lintas-situs tetap tidak
+  membawa cookie, dan consent POST dilindungi CSRF token. Logout mencabut sesi
+  di server. Restart server = semua sesi Web UI hilang. Login dibatasi 5
+  percobaan gagal per menit per IP.
 - Semua respons HTTP membawa header hardening: `Content-Security-Policy`
   (`default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self';
   frame-ancestors 'none'; base-uri 'self'; form-action 'self'`),
   `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `Cross-Origin-Opener-Policy: same-origin`.
+  Halaman consent menambahkan origin `redirect_uri` klien yang sudah tervalidasi
+  ke `form-action`, karena Chrome juga memeriksa directive itu pada redirect
+  setelah submit form.
   Browser menolak request state-changing dari origin lain
   (`http.CrossOriginProtection`). Endpoint REST yang menerima JSON wajib
   `Content-Type: application/json` (yang lain 415).

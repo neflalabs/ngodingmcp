@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,27 @@ func decodeJSON(t *testing.T, r *http.Response) map[string]any {
 		t.Fatalf("decode body %q: %v", body, err)
 	}
 	return m
+}
+
+// redirectTarget extracts the destination from the interstitial page the
+// authorize handler renders after a consent decision.
+func redirectTarget(t *testing.T, body string) *url.URL {
+	t.Helper()
+	const marker = `<meta http-equiv="refresh" content="0;url=`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("interstitial missing meta refresh:\n%s", body)
+	}
+	rest := body[i+len(marker):]
+	j := strings.Index(rest, `">`)
+	if j < 0 {
+		t.Fatalf("interstitial meta refresh malformed:\n%s", body)
+	}
+	u, err := url.Parse(html.UnescapeString(rest[:j]))
+	if err != nil {
+		t.Fatalf("interstitial redirect URL: %v", err)
+	}
+	return u
 }
 
 func registerClient(t *testing.T, s *Server, redirectURI string) map[string]any {
@@ -188,13 +210,14 @@ func TestFullAuthorizationFlow(t *testing.T) {
 
 	res := rec.Result()
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusFound {
+	if res.StatusCode != http.StatusOK {
 		t.Fatalf("approve: status %d", res.StatusCode)
 	}
-	loc, err := res.Location()
+	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		t.Fatalf("approve: no Location: %v", err)
+		t.Fatal(err)
 	}
+	loc := redirectTarget(t, string(body))
 	if loc.Query().Get("iss") != "http://127.0.0.1:8080" {
 		t.Fatalf("iss in redirect = %q", loc.Query().Get("iss"))
 	}
@@ -556,8 +579,8 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 	i = strings.Index(body, marker)
 	csrf = body[i+len(marker):]
 	csrf = csrf[:strings.Index(csrf, `"`)]
-	if code := approve(csrf); code != http.StatusFound {
-		t.Fatalf("approve with fresh csrf: status %d, want 302", code)
+	if code := approve(csrf); code != http.StatusOK {
+		t.Fatalf("approve with fresh csrf: status %d, want 200", code)
 	}
 
 	// The consumed CSRF is single-use; replaying it re-renders the
@@ -566,6 +589,184 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 		t.Fatalf("replayed csrf: status %d, want 200", code)
 	}
 	_ = verifier
+}
+
+// TestConsentTokenFormAcceptsSessionOnPost covers the SameSite asymmetry: the
+// consent page is reached by a cross-site top-level GET (which with a Strict
+// cookie carries no session, so the token form is rendered), while the form
+// POST is same-site and does carry the cookie. The handler must not demand a
+// CSRF token the rendered page could never have included.
+func TestConsentTokenFormAcceptsSessionOnPost(t *testing.T) {
+	s := newTestServer(t)
+	client := registerClient(t, s, "http://127.0.0.1:3000/callback")
+	clientID, _ := client["client_id"].(string)
+	_, challenge := pkcePair(t)
+
+	q := url.Values{}
+	q.Set("client_id", clientID)
+	q.Set("redirect_uri", "http://127.0.0.1:3000/callback")
+	q.Set("response_type", "code")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+	q.Set("state", "s")
+	q.Set("scope", "mcp")
+	q.Set("resource", "http://127.0.0.1:8080")
+
+	// Cross-site GET without the session cookie: token form, no CSRF.
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/oauth/authorize?"+q.Encode(), nil)
+	rec := httptest.NewRecorder()
+	s.handleAuthorize(rec, req)
+	body := rec.Body.String()
+	if strings.Contains(body, `name="csrf_token"`) {
+		t.Fatalf("token-mode page unexpectedly carries a CSRF token:\n%s", body)
+	}
+	if !strings.Contains(body, `name="token"`) {
+		t.Fatalf("token-mode page missing token field:\n%s", body)
+	}
+
+	// Same-site POST: the browser now attaches a valid session cookie.
+	sessionID, err := s.auth.Sessions().Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{}
+	form.Set("client_id", clientID)
+	form.Set("redirect_uri", "http://127.0.0.1:3000/callback")
+	form.Set("code_challenge", challenge)
+	form.Set("state", "s")
+	form.Set("scope", "mcp")
+	form.Set("resource", "http://127.0.0.1:8080")
+	form.Set("token", testToken)
+	form.Set("decision", "approve")
+	req = httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: sessionID})
+	rec = httptest.NewRecorder()
+	s.handleAuthorizeSubmit(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("approve: status %d, want 200 (body: %s)", rec.Code, rec.Body.String())
+	}
+	if body := rec.Body.String(); !strings.Contains(body, `http-equiv="refresh"`) || !strings.Contains(body, `href=`) {
+		t.Fatalf("approve: interstitial missing meta refresh or Continue link:\n%s", body)
+	}
+}
+
+// TestConsentExpiredSessionFallsBackToTokenForm covers the opposite mismatch:
+// the page was rendered with a session and a CSRF token, but the session is
+// gone by the time the form is submitted. The user gets the token form back
+// instead of a dead end.
+func TestConsentExpiredSessionFallsBackToTokenForm(t *testing.T) {
+	s := newTestServer(t)
+	client := registerClient(t, s, "http://127.0.0.1:3000/callback")
+	clientID, _ := client["client_id"].(string)
+	_, challenge := pkcePair(t)
+
+	q := url.Values{}
+	q.Set("client_id", clientID)
+	q.Set("redirect_uri", "http://127.0.0.1:3000/callback")
+	q.Set("response_type", "code")
+	q.Set("code_challenge", challenge)
+	q.Set("code_challenge_method", "S256")
+	q.Set("state", "s")
+	q.Set("scope", "mcp")
+	q.Set("resource", "http://127.0.0.1:8080")
+
+	sessionID, err := s.auth.Sessions().Create()
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/oauth/authorize?"+q.Encode(), nil)
+	req.AddCookie(&http.Cookie{Name: "ngodingmcp_session", Value: sessionID})
+	rec := httptest.NewRecorder()
+	s.handleAuthorize(rec, req)
+	body := rec.Body.String()
+	marker := `name="csrf_token" value="`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("session-mode page missing CSRF token:\n%s", body)
+	}
+	csrf := body[i+len(marker):]
+	csrf = csrf[:strings.Index(csrf, `"`)]
+
+	form := url.Values{}
+	form.Set("client_id", clientID)
+	form.Set("redirect_uri", "http://127.0.0.1:3000/callback")
+	form.Set("code_challenge", challenge)
+	form.Set("state", "s")
+	form.Set("scope", "mcp")
+	form.Set("resource", "http://127.0.0.1:8080")
+	form.Set("csrf_token", csrf)
+	form.Set("decision", "approve")
+	// No session cookie: the session is gone.
+	req = httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec = httptest.NewRecorder()
+	s.handleAuthorizeSubmit(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("stale session: status %d, want 200", rec.Code)
+	}
+	body = rec.Body.String()
+	if !strings.Contains(body, `name="token"`) || !strings.Contains(body, "Session expired") {
+		t.Fatalf("stale session did not fall back to the token form:\n%s", body)
+	}
+}
+
+func TestConsentCSPAllowsRegisteredRedirectOrigin(t *testing.T) {
+	// Chrome enforces form-action on the redirect that follows the consent
+	// form submission. The policy must therefore name the client's
+	// redirect origin, otherwise the browser cancels the hop back to the
+	// client and the consent page appears to do nothing.
+	s := newTestServer(t)
+	_, challenge := pkcePair(t)
+
+	cases := []struct {
+		name        string
+		redirectURI string
+		want        string
+	}{
+		{
+			name:        "google",
+			redirectURI: "https://oauth-redirect.googleusercontent.com/r/user_bound_custom-mcp-abc",
+			want:        "form-action 'self' https://oauth-redirect.googleusercontent.com",
+		},
+		{
+			name:        "loopback with port",
+			redirectURI: "http://127.0.0.1:3000/callback",
+			want:        "form-action 'self' http://127.0.0.1:3000",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client := registerClient(t, s, tc.redirectURI)
+			clientID, _ := client["client_id"].(string)
+
+			q := url.Values{}
+			q.Set("client_id", clientID)
+			q.Set("redirect_uri", tc.redirectURI)
+			q.Set("response_type", "code")
+			q.Set("code_challenge", challenge)
+			q.Set("code_challenge_method", "S256")
+			q.Set("scope", "mcp")
+			q.Set("resource", "http://127.0.0.1:8080")
+
+			req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8080/oauth/authorize?"+q.Encode(), nil)
+			rec := httptest.NewRecorder()
+			s.handleAuthorize(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("authorize: status %d", rec.Code)
+			}
+			csp := rec.Result().Header.Get("Content-Security-Policy")
+			if !strings.Contains(csp, tc.want) {
+				t.Fatalf("CSP %q missing %q", csp, tc.want)
+			}
+			// Everything else from the hardened policy must still be there.
+			for _, directive := range []string{"default-src 'self'", "frame-ancestors 'none'", "base-uri 'self'"} {
+				if !strings.Contains(csp, directive) {
+					t.Fatalf("CSP %q missing %q", csp, directive)
+				}
+			}
+		})
+	}
 }
 
 func exchangeRefreshToken(t *testing.T, s *Server, clientID, refresh string) (map[string]any, int) {
@@ -613,10 +814,7 @@ func TestRefreshTokenReplayRevokesFamily(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	s.handleAuthorizeSubmit(rec, req)
-	loc, err := rec.Result().Location()
-	if err != nil {
-		t.Fatalf("approve: %v", err)
-	}
+	loc := redirectTarget(t, rec.Body.String())
 
 	code := loc.Query().Get("code")
 	tokenForm := url.Values{}
@@ -678,10 +876,7 @@ func TestFullFlowWithEndpointResource(t *testing.T) {
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	rec := httptest.NewRecorder()
 	s.handleAuthorizeSubmit(rec, req)
-	loc, err := rec.Result().Location()
-	if err != nil {
-		t.Fatalf("approve: %v", err)
-	}
+	loc := redirectTarget(t, rec.Body.String())
 	code := loc.Query().Get("code")
 	if code == "" {
 		t.Fatalf("no code in redirect: %s", loc)

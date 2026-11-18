@@ -458,6 +458,7 @@ func logRequests(logger *slog.Logger, next http.Handler) http.Handler {
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote", r.RemoteAddr,
+			"ua", r.UserAgent(),
 			"status", sr.status,
 			"bytes", sr.size,
 			"duration", time.Since(start).Round(time.Millisecond),

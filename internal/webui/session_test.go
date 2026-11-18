@@ -53,6 +53,11 @@ func TestLoginCreatesOpaqueSessionAndLogoutRevokes(t *testing.T) {
 	if !ui.auth.Sessions().Valid(sessionCookie.Value) {
 		t.Fatal("minted session is not valid server-side")
 	}
+	// Lax lets the cookie ride the cross-site top-level navigation to the
+	// OAuth consent page, while still being withheld from cross-site POSTs.
+	if sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("session cookie SameSite = %v, want Lax", sessionCookie.SameSite)
+	}
 
 	// Logout revokes the session server-side and expires the cookie.
 	rec = post("/logout", url.Values{}, sessionCookie)

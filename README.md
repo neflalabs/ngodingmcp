@@ -120,7 +120,7 @@ Tabel flag dan env lengkap: [docs/configuration.md](docs/configuration.md).
 - Jalankan di `localhost`, atau di belakang reverse proxy TLS kalau diakses dari
   jaringan lain. Token dikirim sebagai header biasa.
 - Login Web UI memakai session cookie opaque (bukan token), HttpOnly,
-  `SameSite=Strict`, dan semua respons membawa CSP + header hardening; `/mcp`
+  `SameSite=Lax`, dan semua respons membawa CSP + header hardening; `/mcp`
   hanya menerima header kredensial (Bearer/X-API-Key).
 - Tool git bisa commit, push, pull, dan merge, tapi push tidak pernah force,
   pull hanya fast-forward, merge yang konflik di-abort otomatis, dan hook serta

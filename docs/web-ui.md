@@ -2,8 +2,9 @@
 
 Buka alamat server (default `http://127.0.0.1:8080/`), masukkan token, lalu edit
 seperti editor biasa. Browser memakai login cookie — berisi **session ID**
-server-side (bukan token), HttpOnly, `SameSite=Strict`, sliding TTL 7 hari;
-logout mencabut sesi. Login dibatasi 5 percobaan gagal per menit per IP.
+server-side (bukan token), HttpOnly, `SameSite=Lax` (agar sesi ikut saat
+browser diarahkan lintas-situs ke consent OAuth), sliding TTL 7 hari; logout
+mencabut sesi. Login dibatasi 5 percobaan gagal per menit per IP.
 MCP client dan REST API memakai `Authorization: Bearer` atau `X-API-Key`
 (`/mcp` tidak menerima cookie). Semua respons membawa header hardening
 (CSP, `X-Frame-Options: DENY`, `nosniff`, `no-referrer`).
