@@ -6,6 +6,9 @@ on:
       - main
     tags:
       - "v20*"
+    paths-ignore:
+      - "docs/**"
+      - "README.md"
   workflow_dispatch:
     inputs:
       version:
