@@ -64,6 +64,29 @@ type gitHubCreateRepoArgs struct {
 	SkipRemote  bool   `json:"skip_remote,omitempty" jsonschema:"only create the repository on GitHub; do not add a remote"`
 }
 
+type gitHubRunsArgs struct {
+	Workflow string `json:"workflow,omitempty" jsonschema:"optional workflow file name or name, e.g. ci.yml"`
+	Branch   string `json:"branch,omitempty" jsonschema:"optional branch name to filter runs"`
+	Status   string `json:"status,omitempty" jsonschema:"optional status or conclusion filter: queued, in_progress, completed, success, failure, cancelled"`
+	Limit    int    `json:"limit,omitempty" jsonschema:"max runs to return (default 10, max 50)"`
+}
+
+type gitHubRunViewArgs struct {
+	RunID      int64  `json:"run_id,omitempty" jsonschema:"workflow run database ID from git_github_runs; omit or 0 to inspect the latest matching run"`
+	Workflow   string `json:"workflow,omitempty" jsonschema:"optional workflow file name or name when run_id is omitted"`
+	Branch     string `json:"branch,omitempty" jsonschema:"optional branch filter when run_id is omitted"`
+	FailedLogs bool   `json:"failed_logs,omitempty" jsonschema:"include logs from failed steps (--log-failed, truncated to last 32 KiB)"`
+}
+
+type gitHubRunRerunArgs struct {
+	RunID      int64 `json:"run_id" jsonschema:"workflow run database ID from git_github_runs"`
+	FailedOnly bool  `json:"failed_only,omitempty" jsonschema:"only re-run failed jobs instead of the entire workflow run"`
+}
+
+type gitHubRunRerunOut struct {
+	Message string `json:"message"`
+}
+
 // network marks a tool that talks to a remote server.
 func network(a *mcp.ToolAnnotations) *mcp.ToolAnnotations {
 	a.OpenWorldHint = boolPtr(true)
@@ -220,8 +243,91 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		text := fmt.Sprintf("created %s repository %s\n%s", res.Visibility, res.URL, res.Note)
 		return textResult(text), res, nil
 	})
-}
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "git_github_runs",
+		Description: "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). " +
+			"Filter optionally by workflow (e.g. ci.yml), branch, or status/conclusion. Read-only; never prompts.",
+		Annotations: network(readOnly()),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunsArgs) (*mcp.CallToolResult, gitwrite.GitHubRunsResult, error) {
+		res, err := g.ListGitHubRuns(ctx, gitwrite.GitHubRunsOptions{
+			Workflow: in.Workflow, Branch: in.Branch, Status: in.Status, Limit: in.Limit,
+		})
+		if err != nil {
+			return nil, gitwrite.GitHubRunsResult{}, err
+		}
+		if len(res.Runs) == 0 {
+			return textResult("no GitHub Actions workflow runs found"), res, nil
+		}
+		var b strings.Builder
+		for _, r := range res.Runs {
+			state := r.Status
+			if r.Conclusion != "" {
+				state = r.Conclusion
+			}
+			fmt.Fprintf(&b, "#%d (id: %d) [%s] %s — %s (%s @ %s) %s\n",
+				r.Number, r.DatabaseID, state, r.WorkflowName, r.DisplayTitle, r.HeadBranch, r.HeadSha, r.CreatedAt)
+		}
+		return textResult(b.String()), res, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "git_github_run_view",
+		Description: "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). " +
+			"Omit run_id (or pass 0) to inspect the latest run. Read-only; never prompts.",
+		Annotations: network(readOnly()),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunViewArgs) (*mcp.CallToolResult, gitwrite.GitHubRunDetail, error) {
+		res, err := g.ViewGitHubRun(ctx, gitwrite.GitHubRunViewOptions{
+			RunID: in.RunID, Workflow: in.Workflow, Branch: in.Branch, FailedLogs: in.FailedLogs,
+		})
+		if err != nil {
+			return nil, gitwrite.GitHubRunDetail{}, err
+		}
+		state := res.Status
+		if res.Conclusion != "" {
+			state = res.Conclusion
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s #%d (id: %d) — %s\n", res.WorkflowName, res.Number, res.DatabaseID, state)
+		fmt.Fprintf(&b, "Title: %s (%s @ %s, event: %s)\n", res.DisplayTitle, res.HeadBranch, res.HeadSha, res.Event)
+		fmt.Fprintf(&b, "URL: %s\n", res.URL)
+		for _, j := range res.Jobs {
+			jState := j.Status
+			if j.Conclusion != "" {
+				jState = j.Conclusion
+			}
+			fmt.Fprintf(&b, "\nJob: %s [%s]\n", j.Name, jState)
+			for _, st := range j.Steps {
+				sState := st.Status
+				if st.Conclusion != "" {
+					sState = st.Conclusion
+				}
+				fmt.Fprintf(&b, "  %d. %s [%s]\n", st.Number, st.Name, sState)
+			}
+		}
+		if res.FailedLogs != "" {
+			b.WriteString("\n--- Failed Logs ---\n")
+			b.WriteString(res.FailedLogs)
+			if res.LogsTruncated {
+				b.WriteString("\n[logs truncated to last 32 KiB]")
+			}
+		}
+		return textResult(b.String()), res, nil
+	})
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name: "git_github_run_rerun",
+		Description: "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). " +
+			"Requires write access to the repository; never prompts.",
+		Annotations: network(additive()),
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunRerunArgs) (*mcp.CallToolResult, gitHubRunRerunOut, error) {
+		msg, err := g.RerunGitHubRun(ctx, in.RunID, in.FailedOnly)
+		if err != nil {
+			return nil, gitHubRunRerunOut{}, err
+		}
+		return textResult(msg), gitHubRunRerunOut{Message: msg}, nil
+	})
+}
 func remoteMessage(msg string, err error) (*mcp.CallToolResult, gitRemoteOut, error) {
 	if err != nil {
 		return nil, gitRemoteOut{}, err

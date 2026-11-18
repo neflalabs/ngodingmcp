@@ -50,7 +50,7 @@ make release VERSION=v2026.12.0       # cross-compile ke dist/, override CalVer
 make version                          # build lalu cetak versinya
 ```
 
-`make release` membuat binary linux (amd64, arm64), darwin (amd64, arm64), dan
+`make release` membuat binary linux (amd64, arm64), apple (amd64, arm64), dan
 windows (amd64) di `dist/`.
 
 Semua bagian bisa ditimpa saat link, misalnya untuk build di luar repo git:

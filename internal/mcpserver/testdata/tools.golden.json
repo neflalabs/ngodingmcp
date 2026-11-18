@@ -689,6 +689,302 @@
     "annotations": {
       "destructiveHint": false,
       "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": false
+    },
+    "description": "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). Requires write access to the repository; never prompts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "failed_only": {
+          "description": "only re-run failed jobs instead of the entire workflow run",
+          "type": "boolean"
+        },
+        "run_id": {
+          "description": "workflow run database ID from git_github_runs",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "run_id"
+      ],
+      "type": "object"
+    },
+    "name": "git_github_run_rerun",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). Omit run_id (or pass 0) to inspect the latest run. Read-only; never prompts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "optional branch filter when run_id is omitted",
+          "type": "string"
+        },
+        "failed_logs": {
+          "description": "include logs from failed steps (--log-failed, truncated to last 32 KiB)",
+          "type": "boolean"
+        },
+        "run_id": {
+          "description": "workflow run database ID from git_github_runs; omit or 0 to inspect the latest matching run",
+          "type": "integer"
+        },
+        "workflow": {
+          "description": "optional workflow file name or name when run_id is omitted",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_github_run_view",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "conclusion": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        },
+        "database_id": {
+          "type": "integer"
+        },
+        "display_title": {
+          "type": "string"
+        },
+        "event": {
+          "type": "string"
+        },
+        "failed_logs": {
+          "type": "string"
+        },
+        "head_branch": {
+          "type": "string"
+        },
+        "head_sha": {
+          "type": "string"
+        },
+        "jobs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "completed_at": {
+                "type": "string"
+              },
+              "conclusion": {
+                "type": "string"
+              },
+              "database_id": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "started_at": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string"
+              },
+              "steps": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "conclusion": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "number": {
+                      "type": "integer"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "number",
+                    "name",
+                    "status"
+                  ],
+                  "type": "object"
+                },
+                "type": [
+                  "null",
+                  "array"
+                ]
+              }
+            },
+            "required": [
+              "database_id",
+              "name",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "logs_truncated": {
+          "type": "boolean"
+        },
+        "number": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "workflow_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "database_id",
+        "number",
+        "workflow_name",
+        "display_title",
+        "event",
+        "head_branch",
+        "head_sha",
+        "status",
+        "url",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "openWorldHint": true,
+      "readOnlyHint": true
+    },
+    "description": "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). Filter optionally by workflow (e.g. ci.yml), branch, or status/conclusion. Read-only; never prompts.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "description": "optional branch name to filter runs",
+          "type": "string"
+        },
+        "limit": {
+          "description": "max runs to return (default 10, max 50)",
+          "type": "integer"
+        },
+        "status": {
+          "description": "optional status or conclusion filter: queued, in_progress, completed, success, failure, cancelled",
+          "type": "string"
+        },
+        "workflow": {
+          "description": "optional workflow file name or name, e.g. ci.yml",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "git_github_runs",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "runs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "conclusion": {
+                "type": "string"
+              },
+              "created_at": {
+                "type": "string"
+              },
+              "database_id": {
+                "type": "integer"
+              },
+              "display_title": {
+                "type": "string"
+              },
+              "event": {
+                "type": "string"
+              },
+              "head_branch": {
+                "type": "string"
+              },
+              "head_sha": {
+                "type": "string"
+              },
+              "number": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string"
+              },
+              "updated_at": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "workflow_name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "database_id",
+              "number",
+              "workflow_name",
+              "display_title",
+              "event",
+              "head_branch",
+              "head_sha",
+              "status",
+              "url",
+              "created_at",
+              "updated_at"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        }
+      },
+      "required": [
+        "runs"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
       "readOnlyHint": false
     },
     "description": "Create a git repository at the workspace root (initial branch main unless given). Refuses when the workspace already is a repository.",

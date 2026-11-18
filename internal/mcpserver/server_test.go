@@ -90,6 +90,9 @@ func TestServer_CoreToolsRegisteredAndSchemas(t *testing.T) {
 		"git_push":               {isReadOnly: false, isDestructive: boolPtr(false)},
 		"git_merge":              {isReadOnly: false, isDestructive: boolPtr(false)},
 		"git_github_create_repo": {isReadOnly: false, isDestructive: boolPtr(false)},
+		"git_github_runs":        {isReadOnly: true, isDestructive: nil},
+		"git_github_run_view":    {isReadOnly: true, isDestructive: nil},
+		"git_github_run_rerun":   {isReadOnly: false, isDestructive: boolPtr(false)},
 	}
 
 	if len(res.Tools) != len(expectedTools) {

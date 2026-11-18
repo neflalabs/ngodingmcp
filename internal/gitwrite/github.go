@@ -157,7 +157,13 @@ func (g *Git) gh(ctx context.Context, args ...string) (string, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		e := g.ws.SafeError(&scrubbedError{msg: ScrubCredentials("gh repo create: " + msg), err: err})
+		sub := "gh"
+		if len(args) >= 2 && !strings.HasPrefix(args[0], "-") && !strings.HasPrefix(args[1], "-") {
+			sub = "gh " + args[0] + " " + args[1]
+		} else if len(args) >= 1 && !strings.HasPrefix(args[0], "-") {
+			sub = "gh " + args[0]
+		}
+		e := g.ws.SafeError(&scrubbedError{msg: ScrubCredentials(sub + ": " + msg), err: err})
 		if h := ghHint(msg); h != "" {
 			return "", &hintError{err: e, hint: h}
 		}
@@ -174,8 +180,10 @@ func ghHint(msg string) string {
 		return "gh is not logged in. Run `gh auth login` once in a terminal as the same user. For the background service (ngodingmcp -d), if gh stores its token in the desktop keyring the service may not reach it: run `gh auth login --insecure-storage`, or put GH_TOKEN=<token> in ~/.config/ngodingmcp/env and run `ngodingmcp restart`."
 	case strings.Contains(low, "name already exists"):
 		return "a repository with this name already exists on that account; pick another name, or add the existing one with git_remote action=add."
+	case strings.Contains(low, "could not find any workflows") || strings.Contains(low, "no workflow runs"):
+		return "no GitHub Actions workflow runs exist on this repository yet, or the workflow file name did not match."
 	case strings.Contains(low, "403") || strings.Contains(low, "resource not accessible"):
-		return "the gh token may lack permission to create repositories (scope repo, or for an organisation the right to create repositories there)."
+		return "the gh token may lack permission (scopes repo and workflow are needed to inspect or re-run GitHub Actions)."
 	}
 	return ""
 }

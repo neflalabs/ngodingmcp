@@ -65,7 +65,8 @@ func TestGitWriteToolsAreCore(t *testing.T) {
 		have[tool.Name] = true
 	}
 	for _, name := range []string{"git_init", "git_add", "git_unstage", "git_commit", "git_create_branch", "git_switch_branch",
-		"git_remote", "git_fetch", "git_pull", "git_push", "git_merge", "git_github_create_repo"} {
+		"git_remote", "git_fetch", "git_pull", "git_push", "git_merge", "git_github_create_repo",
+		"git_github_runs", "git_github_run_view", "git_github_run_rerun"} {
 		if !have[name] {
 			t.Errorf("%s not registered by default", name)
 		}
