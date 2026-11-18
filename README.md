@@ -12,14 +12,14 @@ Browser (Web UI) ──────────┘
 
 ## Fitur
 
-- **32 tool inti** yang selalu aktif: baca/tulis/list/pindah/hapus file, edit
+- **35 tool inti** yang selalu aktif: baca/tulis/list/pindah/hapus file, edit
   presisi, search & replace, statistik workspace, `validate_syntax`, `count_tokens`.
 - **Edit atomik + diff**: `edit_file` menjalankan beberapa edit sekaligus (semua
   berhasil atau tidak ada yang ditulis) dan mengembalikan unified diff.
-- **Git lokal + remote**: status/diff/log, init, add, unstage, commit, buat/pindah
-  branch, remote, fetch, pull (fast-forward saja), push (tanpa force), merge
-  (konflik di-abort otomatis), dan buat repo GitHub lewat `gh`. Tanpa rebase,
-  reset, atau hook.
+- **Git lokal, remote, & GitHub**: status/diff/log, init, add, unstage, commit,
+  buat/pindah branch, remote, fetch, pull (fast-forward saja), push (tanpa force),
+  merge (konflik di-abort otomatis), buat repo GitHub, serta pantau/rerun workflow
+  GitHub Actions lewat `gh`. Tanpa rebase, reset, atau hook.
 - **`run_command` + background process** (opt-in, `--allow-run`): command dari
   allowlist tanpa shell, plus dev server yang tetap hidup (`bun run dev`).
 - **Download & upload**: `download_file` dari URL https (opt-in,
@@ -31,22 +31,26 @@ Browser (Web UI) ──────────┘
 - **Sandbox**: semua path dikunci di root workspace; file sensitif (`.env`,
   private key, `.git`) diblokir secara default.
 
-Jumlah tool: 32 secara default, 39 dengan `--allow-run` (+ `run_command` dan 6
-tool proses), 40 kalau `--allow-download` juga aktif. Daftar lengkap ada di
+Jumlah tool: 35 secara default, 42 dengan `--allow-run` (+ `run_command` dan 6
+tool proses), 43 kalau `--allow-download` juga aktif. Daftar lengkap ada di
 [docs/tools.md](docs/tools.md).
 
 ## Requirements
 
-- Go **1.26.10** atau lebih baru (lihat `go.mod`) untuk build.
+- Go **1.26.10** atau lebih baru (lihat `go.mod`) untuk build dari source
+  (atau unduh binary siap pakai di [GitHub Releases](https://github.com/neflalabs/ngodingmcp/releases)).
 - `git` di `PATH` untuk tool git. `gh` (GitHub CLI, sudah `gh auth login`) untuk
-  `git_github_create_repo` dan cara termudah push lewat HTTPS. Langkah auth,
-  termasuk untuk mode `-d`, ada di [docs/tools.md](docs/tools.md#auth-untuk-remote).
+  `git_github_create_repo`, tool GitHub Actions (`git_github_runs`,
+  `git_github_run_view`, `git_github_run_rerun`), dan cara termudah push lewat HTTPS.
+  Langkah auth, termasuk untuk mode `-d`, ada di [docs/tools.md](docs/tools.md#auth-untuk-remote).
 - Linux dengan systemd untuk mode background (`-d`). Mode TUI dan `serve`
   tidak butuh systemd.
 
 ## Quick start
 
-Build:
+Unduh binary rilis dari [GitHub Releases](https://github.com/neflalabs/ngodingmcp/releases)
+(`linux-amd64`, `linux-arm64`, `apple-amd64`, `apple-arm64`, `windows-amd64.exe`
+beserta `checksums.txt`), atau build sendiri dari source:
 
 ```sh
 go build -o ngodingmcp .    # atau: make build (binary statis)

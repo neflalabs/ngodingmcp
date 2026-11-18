@@ -26,7 +26,7 @@ ngodingmcp/
 │   │                           #   blokir file sensitif, edit_file + diff, cek delimiter
 │   ├── fetch/                  # download_file: https + guard IP saat dial
 │   ├── gitread/                # git status/diff/log read-only
-│   ├── gitwrite/               # git init/add/commit/branch + remote/fetch/pull/push/merge, gh repo create (tanpa force/hook)
+│   ├── gitwrite/               # git init/add/commit/branch + remote/fetch/pull/push/merge, gh repo & actions (tanpa force/hook)
 │   ├── mcpserver/              # definisi MCP tools, satu file per domain:
 │   │   ├── server.go           #   Options, konstruktor, daftar tool aktif, middleware
 │   │   ├── helpers.go          #   textResult, preset anotasi, helper kecil
@@ -37,11 +37,11 @@ ngodingmcp/
 │   │   ├── tools_search.go     #   search_text, search_and_replace
 │   │   ├── tools_inspect.go    #   workspace_stats, validate_syntax, count_tokens
 │   │   ├── tools_git.go        #   git read-only + git write
-│   │   ├── tools_git_remote.go #   git remote/fetch/pull/push/merge, git_github_create_repo
+│   │   ├── tools_git_remote.go #   git remote/fetch/pull/push/merge, git_github_create_repo & actions
 │   │   ├── tools_run.go        #   run_command (opt-in)
 │   │   ├── tools_process.go    #   background process tools (opt-in)
 │   │   ├── tools_download.go   #   download_file (opt-in)
-│   │   └── testdata/tools.golden.json  # kontrak semua 40 tool (TestToolContract)
+│   │   └── testdata/tools.golden.json  # kontrak semua 43 tool (TestToolContract)
 │   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
 │       └── web/                # index.html, login.html, app.js, login.js, theme.js, style.css
 ├── main_test.go, service_cmd_test.go
@@ -58,7 +58,7 @@ go test ./...        # atau: make test
 ```
 
 Nama, deskripsi, anotasi, dan schema semua tool dikunci oleh `TestToolContract`
-(`internal/mcpserver/testdata/tools.golden.json`, 40 tool dengan semua opt-in
+(`internal/mcpserver/testdata/tools.golden.json`, 43 tool dengan semua opt-in
 aktif). Kalau kontrak tool memang sengaja diubah, perbarui snapshot lalu review
 diff-nya:
 

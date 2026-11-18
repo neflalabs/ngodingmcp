@@ -7,12 +7,12 @@ tidak bisa keluar dari root.
 
 | Mode | Jumlah | Isi |
 |---|---|---|
-| Default | 32 | tool inti (file, edit, search, inspect, git) |
-| `--allow-run` | 39 | 32 inti + `run_command` + 6 tool proses |
-| `--allow-download` | 33 | 32 inti + `download_file` |
-| `--allow-run --allow-download` | 40 | semuanya |
+| Default | 35 | tool inti (file, edit, search, inspect, git) |
+| `--allow-run` | 42 | 35 inti + `run_command` + 6 tool proses |
+| `--allow-download` | 36 | 35 inti + `download_file` |
+| `--allow-run --allow-download` | 43 | semuanya |
 
-Daftar tool aktif bisa dicek di TUI (baris `tools: N active`). Kontrak semua 40
+Daftar tool aktif bisa dicek di TUI (baris `tools: N active`). Kontrak semua 43
 tool (nama, deskripsi, anotasi, schema) dikunci di
 `internal/mcpserver/testdata/tools.golden.json`, lihat [development.md](development.md).
 
@@ -26,7 +26,7 @@ tool (nama, deskripsi, anotasi, schema) dikunci di
 | Inspect | `workspace_stats`, `validate_syntax`, `count_tokens` |
 | Git read | `git_status`, `git_diff`, `git_log` |
 | Git write | `git_init`, `git_add`, `git_unstage`, `git_commit`, `git_create_branch`, `git_switch_branch` |
-| Git remote | `git_remote`, `git_fetch`, `git_pull`, `git_push`, `git_merge`, `git_github_create_repo` |
+| Git remote | `git_remote`, `git_fetch`, `git_pull`, `git_push`, `git_merge`, `git_github_create_repo`, `git_github_runs`, `git_github_run_view`, `git_github_run_rerun` |
 
 Perilaku umum:
 
@@ -120,6 +120,13 @@ Batas aman:
   lalu menambahkannya sebagai remote `https://github.com/<owner>/<name>.git`.
   Tidak ada yang di-push; lanjutkan dengan `git_push set_upstream=true`. Tidak bisa
   clone, hapus, atau ubah repo yang sudah ada.
+- `git_github_runs`: daftar workflow run GitHub Actions terbaru lewat `gh run list`
+  (opsi `workflow`, `branch`, `status`, `limit` maksimal 50).
+- `git_github_run_view`: detail job, step, status/conclusion, dan opsi
+  `failed_logs: true` untuk log step yang gagal lewat `gh run view` (`run_id`
+  opsional, default run terbaru).
+- `git_github_run_rerun`: jalankan ulang workflow run lewat `gh run rerun` (`run_id`
+  wajib, opsi `failed_only: true` untuk rerun job yang gagal saja).
 
 Pengaman remote:
 
@@ -150,7 +157,8 @@ langsung terpakai:
   `ssh -T git@github.com` di terminal.
 - **HTTPS**: credential helper di config global. Untuk GitHub paling mudah
   `gh auth login` lalu `gh auth setup-git`. Jangan taruh token di URL remote.
-- **`git_github_create_repo`**: butuh `gh` terpasang dan sudah `gh auth login`.
+- **`git_github_create_repo` & GitHub Actions tools**: butuh `gh` terpasang dan
+  sudah `gh auth login`.
 
 Mode service (`ngodingmcp -d`) tidak punya terminal, dan mungkin tidak punya
 ssh-agent atau keyring desktop. Kalau push/fetch/create gagal di sana:
