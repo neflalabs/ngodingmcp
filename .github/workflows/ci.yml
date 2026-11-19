@@ -1,9 +1,12 @@
 name: CI
 
+# Pushes to main are checked by release.yml, which calls this workflow
+# (workflow_call) before it tags and builds, so the checks live in one place
+# and do not run twice per push.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_call:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -31,6 +34,11 @@ jobs:
 
       - name: vet
         run: go vet ./...
+
+      # Pinned here and in the Makefile (STATICCHECK_VERSION); keep both in
+      # step. `go run pkg@version` leaves go.mod untouched.
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
 
       - name: build
         run: go build ./...

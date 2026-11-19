@@ -110,3 +110,53 @@ func TestSplitList(t *testing.T) {
 		t.Errorf("SplitList(empty) = %v", got)
 	}
 }
+
+func TestFirstNonEmpty(t *testing.T) {
+	if got := FirstNonEmpty("", "  ", "b", "c"); got != "b" {
+		t.Errorf("FirstNonEmpty = %q, want b", got)
+	}
+	if got := FirstNonEmpty("", " "); got != "" {
+		t.Errorf("FirstNonEmpty(blanks) = %q, want empty", got)
+	}
+}
+
+func TestPathFollowsXDGConfigHome(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("XDG_CONFIG_HOME override is Linux-specific")
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	got, err := Path()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(dir, "ngodingmcp", "config.json"); got != want {
+		t.Errorf("Path = %q, want %q", got, want)
+	}
+}
+
+func TestLoadMovesCorruptFileAside(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("XDG_CONFIG_HOME override is Linux-specific")
+	}
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "ngodingmcp", "config.json")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := Load(); !reflect.DeepEqual(got, Config{}) {
+		t.Fatalf("Load = %+v, want zero value", got)
+	}
+	// The broken file is kept for the user, not silently overwritten.
+	if _, err := os.Stat(path + ".corrupt"); err != nil {
+		t.Fatalf("corrupt copy missing: %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("broken config.json still in place: %v", err)
+	}
+}

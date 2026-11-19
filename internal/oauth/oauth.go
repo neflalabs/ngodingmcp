@@ -18,7 +18,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -341,10 +340,6 @@ func randomSecret() (string, error) { return randomID(32) }
 func hashSecret(s string) []byte {
 	sum := sha256.Sum256([]byte(s))
 	return sum[:]
-}
-
-func constantTimeEqual(a, b []byte) bool {
-	return subtle.ConstantTimeCompare(a, b) == 1
 }
 
 // isLoopbackHost reports whether a redirect host is loopback-only.

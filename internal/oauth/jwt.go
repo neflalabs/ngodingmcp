@@ -91,8 +91,16 @@ func publicJWK(priv *ecdsa.PrivateKey) (map[string]string, error) {
 	if !ok {
 		return nil, errors.New("signing key is not ECDSA")
 	}
-	x := pub.X.FillBytes(make([]byte, 32))
-	y := pub.Y.FillBytes(make([]byte, 32))
+	// Bytes is the uncompressed point 0x04 || X || Y (32 bytes each for
+	// P-256); it replaces the deprecated big.Int fields X and Y.
+	raw, err := pub.Bytes()
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) != 65 || raw[0] != 4 {
+		return nil, errors.New("signing key is not an uncompressed P-256 point")
+	}
+	x, y := raw[1:33], raw[33:]
 	return map[string]string{
 		"kty": "EC",
 		"crv": "P-256",

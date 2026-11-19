@@ -13,10 +13,6 @@ func writeJSON(w http.ResponseWriter, status int, body map[string]any) {
 	_ = json.NewEncoder(w).Encode(body)
 }
 
-func handleMetadataError(w http.ResponseWriter, status int, code, desc string) {
-	writeJSON(w, status, map[string]any{"error": code, "error_description": desc})
-}
-
 // handleProtectedResourceMetadata serves RFC 9728 metadata for this resource
 // server.
 func (s *Server) handleProtectedResourceMetadata(w http.ResponseWriter, r *http.Request) {

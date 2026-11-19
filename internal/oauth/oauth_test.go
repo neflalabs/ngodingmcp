@@ -528,14 +528,7 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 	req.AddCookie(session)
 	rec := httptest.NewRecorder()
 	s.handleAuthorize(rec, req)
-	body := rec.Body.String()
-	if !strings.Contains(body, `name="csrf_token"`) {
-		t.Fatalf("consent page missing csrf_token:\n%s", body)
-	}
-	marker := `name="csrf_token" value="`
-	i := strings.Index(body, marker)
-	csrf := body[i+len(marker):]
-	csrf = csrf[:strings.Index(csrf, `"`)]
+	first := csrfFromConsent(t, rec.Body.String())
 
 	approve := func(csrfToken string) int {
 		form := url.Values{}
@@ -571,14 +564,10 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 	req.AddCookie(session)
 	rec = httptest.NewRecorder()
 	s.handleAuthorize(rec, req)
-	body = rec.Body.String()
-	if !strings.Contains(body, `name="csrf_token"`) {
-		t.Fatalf("re-rendered consent missing csrf_token:\n%s", body)
+	csrf := csrfFromConsent(t, rec.Body.String())
+	if csrf == first {
+		t.Fatalf("re-rendered consent reused the old csrf token")
 	}
-	marker = `name="csrf_token" value="`
-	i = strings.Index(body, marker)
-	csrf = body[i+len(marker):]
-	csrf = csrf[:strings.Index(csrf, `"`)]
 	if code := approve(csrf); code != http.StatusOK {
 		t.Fatalf("approve with fresh csrf: status %d, want 200", code)
 	}
@@ -589,6 +578,23 @@ func TestSessionConsentRequiresCSRF(t *testing.T) {
 		t.Fatalf("replayed csrf: status %d, want 200", code)
 	}
 	_ = verifier
+}
+
+// csrfFromConsent returns the csrf_token value of a rendered consent page and
+// fails the test when the page has none.
+func csrfFromConsent(t *testing.T, body string) string {
+	t.Helper()
+	const marker = `name="csrf_token" value="`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("consent page missing csrf_token:\n%s", body)
+	}
+	rest := body[i+len(marker):]
+	end := strings.Index(rest, `"`)
+	if end <= 0 {
+		t.Fatalf("consent page has an empty or unterminated csrf_token:\n%s", body)
+	}
+	return rest[:end]
 }
 
 // TestConsentTokenFormAcceptsSessionOnPost covers the SameSite asymmetry: the
