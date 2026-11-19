@@ -7,6 +7,7 @@ ngodingmcp/
 ├── main.go                     # entrypoint + routing subcommand: TUI (default), serve, tui,
 │                               #   version, help; -d/status/logs/restart/stop ke service_cmd.go
 ├── service_cmd.go              # subcommand -d, stop, restart, status, logs
+├── AGENTS.md                   # panduan proyek, juga resource ngodingmcp://agents
 ├── Makefile                    # build, release, version, test, clean
 ├── docs/                       # dokumentasi detail (dirujuk dari README)
 ├── internal/
@@ -34,7 +35,9 @@ ngodingmcp/
 │   │   ├── modules.go          #   modul tool inti yang bisa dimatikan (--disable-tools)
 │   │   ├── safe_error.go       #   scrub path host dari error, tahan workspace selama tool call
 │   │   ├── activity.go         #   log aktivitas per tool call
+│   │   ├── resources.go        #   resource ngodingmcp://agents (AGENTS.md root)
 │   │   ├── tools_file.go       #   read/write/list/info/mkdir/move/delete
+│   │   ├── tools_read.go       #   outline, read_symbol, read_files
 │   │   ├── tools_edit.go       #   replace_text, edit_file, insert/delete/replace_lines
 │   │   ├── tools_search.go     #   search_text, search_and_replace
 │   │   ├── tools_inspect.go    #   workspace_stats, validate_syntax, count_tokens

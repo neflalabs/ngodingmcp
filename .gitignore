@@ -30,6 +30,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Konfigurasi lokal OpenCode
+/opencode.json
+
 # Catatan pengembangan (lokal saja)
 /TaskDev/
 /.commandcode/

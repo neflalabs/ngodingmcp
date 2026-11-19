@@ -19,15 +19,17 @@ import (
 
 const instructions = `This server is a sandboxed text editor for a workspace on disk.
 
-Paths are always relative to the workspace root; leading slashes are ignored and
-".." cannot escape the root. Prefer replace_text over write_file for targeted
-edits, and read a file before modifying it.
+Paths are relative to the workspace root; leading slashes are ignored and ".."
+cannot escape. If available, read the ngodingmcp://agents resource first: it
+holds project structure, conventions and test commands.
 
-Typical workflow:
-1. list_files or search_text to locate what you need.
-2. read_file to inspect exact content (lines are numbered in the text output).
-3. replace_text / insert_text / delete_lines for precise edits.
-4. write_file only when creating a file or rewriting it wholesale.`
+Reading: list_files/search_text to locate; outline then read_symbol to read one
+declaration; read_file for exact lines or read_files for several ranges. Pass
+the returned hash as if_changed_since to skip unchanged files.
+
+Editing: read first; prefer replace_text or edit_file; use replace_lines,
+insert_text or delete_lines for line edits; write_file only for new files or a
+wholesale rewrite.`
 
 // Options selects the opt-in tools registered on top of the editor tools.
 type Options struct {
@@ -64,6 +66,7 @@ func NewWithOptions(ws *workspace.Workspace, version string, opts Options) *mcp.
 		&mcp.Implementation{Name: "ngodingmcp", Title: "NgodingMCP", Version: version},
 		&mcp.ServerOptions{Instructions: instructions},
 	)
+	addResources(s, ws)
 
 	// Core tools: registered unless their module is disabled (38 in total).
 	on := newModuleSet(opts.Disabled)

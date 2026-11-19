@@ -81,13 +81,71 @@ func addWriteFile(s *mcp.Server, ws *workspace.Workspace) {
 		Description: "Create or overwrite a file atomically; parent directories are created.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in writeFileArgs) (*mcp.CallToolResult, writeFileOut, error) {
+		old, existed := "", false
+		if prev, err := ws.ReadFile(in.Path, 0, 0); err == nil {
+			old, existed = prev.Content, true
+		}
 		p, n, err := ws.WriteFile(in.Path, in.Content)
 		if err != nil {
 			return nil, writeFileOut{}, err
 		}
 		out := writeFileOut{Path: p, Bytes: n}
-		return textResult(fmt.Sprintf("wrote %d bytes to %s", n, p)), out, nil
+		msg := fmt.Sprintf("wrote %d bytes to %s", n, p)
+		if existed && smallRewrite(old, in.Content) {
+			msg += "\nnote: this replaced a similar file; replace_text or edit_file would send much less context"
+		}
+		return textResult(msg), out, nil
 	})
+}
+
+// rewriteWarnMinBytes is the size from which a whole-file rewrite is worth
+// warning about. Below it the reminder would be noise.
+const rewriteWarnMinBytes = 4 << 10
+
+// smallRewrite reports whether new differs from old in a small region only, so
+// resending the whole file was avoidable. It compares a common prefix and
+// suffix; no full diff is built.
+func smallRewrite(old, new string) bool {
+	if len(old) < rewriteWarnMinBytes {
+		return false
+	}
+	prefix := commonPrefixLen(old, new)
+	suffix := commonSuffixLen(old[prefix:], new[prefix:])
+	changedOld := len(old) - prefix - suffix
+	changedNew := len(new) - prefix - suffix
+	changed := changedOld
+	if changedNew > changed {
+		changed = changedNew
+	}
+	total := len(old)
+	if len(new) > total {
+		total = len(new)
+	}
+	return changed <= 256 || changed*10 <= total
+}
+
+func commonPrefixLen(a, b string) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+
+func commonSuffixLen(a, b string) int {
+	n := len(a)
+	if len(b) < n {
+		n = len(b)
+	}
+	i := 0
+	for i < n && a[len(a)-1-i] == b[len(b)-1-i] {
+		i++
+	}
+	return i
 }
 
 // --- list_files ------------------------------------------------------------

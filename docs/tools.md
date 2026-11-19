@@ -32,6 +32,14 @@ Tool file, edit, search, dan git read-only (`git_status`, `git_diff`, `git_log`)
 selalu aktif. Contoh profil paling kecil:
 `--disable-tools inspect,git_write,git_remote` (20 tool).
 
+### Resource `AGENTS.md`
+
+Server menyediakan resource MCP `ngodingmcp://agents` (MIME `text/markdown`)
+yang membaca `AGENTS.md` di root workspace. Resource tidak masuk `tools/list`,
+jadi tidak menambah biaya tetap; client membacanya saat butuh. Isinya sebaiknya
+struktur folder, konvensi, dan perintah test proyek. Instructions handshake
+menyarankan client membacanya lebih dulu.
+
 ### Isi hasil tool
 
 Teks (`content`) adalah hasil utama setiap tool. Client tidak seragam soal apa
@@ -83,7 +91,9 @@ Perilaku umum:
 - **Batas ukuran baca** (`--max-file-bytes`, default 2 MiB) dan deteksi file biner.
 - `write_file` bersifat destruktif (menimpa seluruh file) dan hanya menerima teks.
   Untuk edit kecil pakai `replace_text`; untuk file biner pakai `download_file`
-  atau upload lewat Web UI.
+  atau upload lewat Web UI. Jika file besar yang sudah ada ditimpa dengan
+  perubahan kecil, hasilnya menambahkan saran memakai `replace_text`/`edit_file`
+  (deteksi berbasis awalan/akhiran yang sama, bukan diff penuh).
 
 ### Membaca sebagian file
 

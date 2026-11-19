@@ -17,6 +17,10 @@ Browser (Web UI) ──────────┘
   replace, statistik workspace, `validate_syntax`, `count_tokens`.
 - **Edit atomik + diff**: `edit_file` menjalankan beberapa edit sekaligus (semua
   berhasil atau tidak ada yang ditulis) dan mengembalikan unified diff.
+- **Panduan proyek untuk AI**: resource `ngodingmcp://agents` menyajikan
+  `AGENTS.md` root (struktur, konvensi, cara test) tanpa menambah `tools/list`;
+  `write_file` menyarankan `replace_text`/`edit_file` saat menimpa file besar
+  dengan perubahan kecil.
 - **Git lokal, remote, & GitHub**: status/diff/log, init, add, unstage, commit,
   buat/pindah branch, remote, fetch, pull (fast-forward saja), push (tanpa force),
   merge (konflik di-abort otomatis), buat repo GitHub, serta pantau/rerun workflow
