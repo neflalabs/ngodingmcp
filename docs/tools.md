@@ -7,12 +7,12 @@ tidak bisa keluar dari root.
 
 | Mode | Jumlah | Isi |
 |---|---|---|
-| Default | 35 | tool inti (file, edit, search, inspect, git) |
-| `--allow-run` | 42 | 35 inti + `run_command` + 6 tool proses |
-| `--allow-download` | 36 | 35 inti + `download_file` |
-| `--allow-run --allow-download` | 43 | semuanya |
+| Default | 38 | tool inti (file, edit, search, inspect, git) |
+| `--allow-run` | 45 | 38 inti + `run_command` + 6 tool proses |
+| `--allow-download` | 39 | 38 inti + `download_file` |
+| `--allow-run --allow-download` | 46 | semuanya |
 
-Daftar tool aktif bisa dicek di TUI (baris `tools: N active`). Kontrak semua 43
+Daftar tool aktif bisa dicek di TUI (baris `tools: N active`). Kontrak semua 46
 tool (nama, deskripsi, anotasi, schema) dikunci di
 `internal/mcpserver/testdata/tools.golden.json`, lihat [development.md](development.md).
 
@@ -30,23 +30,22 @@ tetap makan token. Tiga modul tool inti bisa dimatikan dengan `--disable-tools`,
 
 Tool file, edit, search, dan git read-only (`git_status`, `git_diff`, `git_log`)
 selalu aktif. Contoh profil paling kecil:
-`--disable-tools inspect,git_write,git_remote` (17 tool).
+`--disable-tools inspect,git_write,git_remote` (20 tool).
 
 ### Isi hasil tool
 
 Teks (`content`) adalah hasil utama setiap tool. Client tidak seragam soal apa
 yang diteruskan ke model, jadi isi yang sama tidak dikirim dua kali:
 
-- Tool yang hasilnya isi file, listing, diff, atau log (`read_file`,
-  `list_files`, `edit_file`, `search_text`, `workspace_stats`, `process_logs`,
-  `git_status`, `git_diff`, `git_log`, `git_github_runs`, `git_github_run_view`,
-  `run_command`) hanya mengirim teks, tanpa `structuredContent` dan tanpa
-  `outputSchema`.
+- Tool yang hasilnya isi file, listing, diff, atau log (`read_file`, `outline`,
+  `read_symbol`, `read_files`, `list_files`, `edit_file`, `search_text`,
+  `workspace_stats`, `process_logs`, `git_status`, `git_diff`, `git_log`,
+  `git_github_runs`, `git_github_run_view`, `run_command`) hanya mengirim teks,
+  tanpa `structuredContent` dan tanpa `outputSchema`.
 - Tool konfirmasi (tulis, pindah, hapus, edit baris, git write/remote, kontrol
-  proses, `download_file`) tetap mengirim `structuredContent`, tapi tanpa
-  `outputSchema`.
-- `file_info`, `validate_syntax`, `count_tokens`, dan `list_processes` tetap
-  punya `outputSchema`.
+  proses, `download_file`) serta `validate_syntax` dan `count_tokens` tetap
+  mengirim `structuredContent`, tapi tanpa `outputSchema`.
+- `file_info` dan `list_processes` tetap punya `outputSchema`.
 - Exit code `run_command` ada di teks dan di `_meta`
   (`ngodingmcp/exitCode`, `ngodingmcp/timedOut`).
 
@@ -54,7 +53,7 @@ yang diteruskan ke model, jadi isi yang sama tidak dikirim dua kali:
 
 | Domain | Tool |
 |---|---|
-| File | `read_file`, `write_file`, `list_files`, `file_info`, `mkdir_path`, `move_path`, `delete_path` |
+| File | `read_file`, `outline`, `read_symbol`, `read_files`, `write_file`, `list_files`, `file_info`, `mkdir_path`, `move_path`, `delete_path` |
 | Edit | `replace_text`, `edit_file`, `insert_text`, `delete_lines`, `replace_lines` |
 | Search | `search_text`, `search_and_replace` |
 | Inspect | `workspace_stats`, `validate_syntax`, `count_tokens` |
@@ -85,6 +84,27 @@ Perilaku umum:
 - `write_file` bersifat destruktif (menimpa seluruh file) dan hanya menerima teks.
   Untuk edit kecil pakai `replace_text`; untuk file biner pakai `download_file`
   atau upload lewat Web UI.
+
+### Membaca sebagian file
+
+Membaca seluruh file untuk mengambil satu fungsi membayar semua baris yang tidak
+dipakai. Empat tool ini memotong biaya tersebut:
+
+- `read_file` mengembalikan `hash` 16 hex di header. Kirim kembali hash itu di
+  `if_changed_since`; kalau isi file tidak berubah, hasilnya cuma
+  `unchanged <path> (hash ...)` tanpa isi. `outline`, `read_symbol`, dan
+  `read_files` menerima hash yang sama dengan cara yang sama.
+- `outline` mendaftar simbol top-level (`func`, `method`, `type`, `const`,
+  `var`) beserta rentang baris. Go memakai `go/ast`; JS/TS memakai fallback
+  regex untuk `function`, `class`, `interface`/`type`, dan arrow function.
+  Tipe file lain membalas notice dan tetap bisa dibaca lewat `read_file`.
+- `read_symbol` membaca satu simbol dari hasil `outline` (misal `Server.Run`)
+  tanpa baris lain. Nama method memakai bentuk `Tipe.Nama`.
+- `read_files` membaca beberapa file atau rentang dalam satu panggilan. Setiap
+  item punya `if_changed_since` sendiri; item yang tidak berubah diringkas jadi
+  `== <path> (unchanged, hash ...)`. Total isi dibatasi `max_bytes` (default
+  64 KiB, maks 1 MiB); file yang tidak tertampung dilaporkan di akhir, dan file
+  terakhir bisa dipotong di batas baris.
 
 ### `edit_file`
 

@@ -59,6 +59,9 @@ func TestServer_CoreToolsRegisteredAndSchemas(t *testing.T) {
 		isDestructive *bool
 	}{
 		"read_file":              {isReadOnly: true, isDestructive: nil},
+		"outline":                {isReadOnly: true, isDestructive: nil},
+		"read_symbol":            {isReadOnly: true, isDestructive: nil},
+		"read_files":             {isReadOnly: true, isDestructive: nil},
 		"write_file":             {isReadOnly: false, isDestructive: boolPtr(true)},
 		"replace_text":           {isReadOnly: false, isDestructive: boolPtr(true)},
 		"insert_text":            {isReadOnly: false, isDestructive: boolPtr(false)},

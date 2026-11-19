@@ -43,7 +43,7 @@ ngodingmcp/
 │   │   ├── tools_run.go        #   run_command (opt-in)
 │   │   ├── tools_process.go    #   background process tools (opt-in)
 │   │   ├── tools_download.go   #   download_file (opt-in)
-│   │   └── testdata/tools.golden.json  # kontrak semua 43 tool (TestToolContract)
+│   │   └── testdata/tools.golden.json  # kontrak semua 46 tool (TestToolContract)
 │   └── webui/                  # REST API (termasuk /api/upload, /api/workspaces) + embedded UI
 │       └── web/                # index.html, login.html, app.js, login.js, theme.js, style.css
 ├── main_test.go, service_cmd_test.go
@@ -68,7 +68,7 @@ dinaikkan, ubah di kedua tempat.
 Build, versi, dan `make clean`: lihat [versioning.md](versioning.md).
 
 Nama, deskripsi, anotasi, dan schema semua tool dikunci oleh `TestToolContract`
-(`internal/mcpserver/testdata/tools.golden.json`, 43 tool dengan semua opt-in
+(`internal/mcpserver/testdata/tools.golden.json`, 46 tool dengan semua opt-in
 aktif). Kalau kontrak tool memang sengaja diubah, perbarui snapshot lalu review
 diff-nya:
 

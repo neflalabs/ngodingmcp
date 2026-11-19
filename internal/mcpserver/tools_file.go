@@ -17,6 +17,7 @@ import (
 // addFileTools registers the file and directory tools.
 func addFileTools(s *mcp.Server, ws *workspace.Workspace) {
 	addReadFile(s, ws)
+	addReadTools(s, ws)
 	addWriteFile(s, ws)
 	addListFiles(s, ws)
 	addFileInfo(s, ws)
@@ -28,34 +29,38 @@ func addFileTools(s *mcp.Server, ws *workspace.Workspace) {
 // --- read_file -------------------------------------------------------------
 
 type readFileArgs struct {
-	Path   string `json:"path" jsonschema:"path relative to workspace root"`
-	Offset int    `json:"offset,omitempty" jsonschema:"1-based line to start reading from (default 1)"`
-	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of lines to return (default all)"`
+	Path           string `json:"path" jsonschema:"path relative to workspace root"`
+	Offset         int    `json:"offset,omitempty" jsonschema:"1-based line to start reading from (default 1)"`
+	Limit          int    `json:"limit,omitempty" jsonschema:"maximum number of lines to return (default all)"`
+	IfChangedSince string `json:"if_changed_since,omitempty" jsonschema:"hash from a previous read; unchanged when equal"`
 }
 
-type readFileOut struct {
-	Path       string `json:"path"`
-	Content    string `json:"content"`
-	StartLine  int    `json:"startLine"`
-	EndLine    int    `json:"endLine"`
-	TotalLines int    `json:"totalLines"`
-	Size       int64  `json:"size"`
-}
+type readFileOut = workspace.ReadResult
 
 func addReadFile(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "read_file",
-		Description: "Read a text file as numbered lines; offset and limit select a slice.",
+		Description: "Read text as numbered lines; offset/limit slice, if_changed_since skips unchanged.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in readFileArgs) (*mcp.CallToolResult, readFileOut, error) {
 		res, err := ws.ReadFile(in.Path, in.Offset, in.Limit)
 		if err != nil {
 			return nil, readFileOut{}, err
 		}
-		out := readFileOut(res)
-		header := fmt.Sprintf("%s (lines %d-%d of %d, %d bytes)", res.Path, res.StartLine, res.EndLine, res.TotalLines, res.Size)
-		return textResult(header + "\n" + workspace.NumberLines(res.Content, res.StartLine)), out, nil
+		if unchangedSince(in.IfChangedSince, res.Hash) {
+			return textResult(fmt.Sprintf("unchanged %s (hash %s)", res.Path, res.Hash)), res, nil
+		}
+		header := fmt.Sprintf("%s (lines %d-%d of %d, %d bytes, hash %s)", res.Path, res.StartLine, res.EndLine, res.TotalLines, res.Size, res.Hash)
+		return textResult(header + "\n" + workspace.NumberLines(res.Content, res.StartLine)), res, nil
 	})
+}
+
+// unchangedSince compares a caller-supplied hash with the current one. The
+// "sha256:" prefix is accepted for readability; comparison is case-insensitive.
+func unchangedSince(prev, current string) bool {
+	prev = strings.ToLower(strings.TrimSpace(prev))
+	prev = strings.TrimPrefix(prev, "sha256:")
+	return prev != "" && prev == current
 }
 
 // --- write_file ------------------------------------------------------------

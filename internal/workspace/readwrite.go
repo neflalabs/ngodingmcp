@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +18,18 @@ type ReadResult struct {
 	EndLine    int    `json:"endLine"`
 	TotalLines int    `json:"totalLines"`
 	Size       int64  `json:"size"`
+	// Hash is a short digest of the whole file, independent of the
+	// offset/limit slice. read_file returns it so a later call can pass
+	// if_changed_since and skip unchanged content.
+	Hash string `json:"hash"`
+}
+
+// contentHash is the first 16 hex characters of the file's SHA-256. That is
+// plenty for change detection and much cheaper to repeat in a header than the
+// full digest.
+func contentHash(content string) string {
+	sum := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(sum[:8])
 }
 
 // ReadFile reads a file, optionally slicing by 1-based line offset/limit.
@@ -40,6 +54,7 @@ func (w *Workspace) ReadFile(rel string, offset, limit int) (ReadResult, error) 
 			EndLine:    offset - 1,
 			TotalLines: total,
 			Size:       info.Size(),
+			Hash:       contentHash(content),
 		}, nil
 	}
 	endLine := total
@@ -58,6 +73,7 @@ func (w *Workspace) ReadFile(rel string, offset, limit int) (ReadResult, error) 
 		EndLine:    endLine,
 		TotalLines: total,
 		Size:       info.Size(),
+		Hash:       contentHash(content),
 	}, nil
 }
 

@@ -12,8 +12,9 @@ Browser (Web UI) ──────────┘
 
 ## Fitur
 
-- **35 tool inti** yang selalu aktif: baca/tulis/list/pindah/hapus file, edit
-  presisi, search & replace, statistik workspace, `validate_syntax`, `count_tokens`.
+- **38 tool inti** yang selalu aktif: baca/tulis/list/pindah/hapus file, baca
+  per simbol (`outline`, `read_symbol`, `read_files`), edit presisi, search &
+  replace, statistik workspace, `validate_syntax`, `count_tokens`.
 - **Edit atomik + diff**: `edit_file` menjalankan beberapa edit sekaligus (semua
   berhasil atau tidak ada yang ditulis) dan mengembalikan unified diff.
 - **Git lokal, remote, & GitHub**: status/diff/log, init, add, unstage, commit,
@@ -31,8 +32,8 @@ Browser (Web UI) ──────────┘
 - **Sandbox**: semua path dikunci di root workspace; file sensitif (`.env`,
   private key, `.git`) diblokir secara default.
 
-Jumlah tool: 35 secara default, 42 dengan `--allow-run` (+ `run_command` dan 6
-tool proses), 43 kalau `--allow-download` juga aktif. Modul `inspect`,
+Jumlah tool: 38 secara default, 45 dengan `--allow-run` (+ `run_command` dan 6
+tool proses), 46 kalau `--allow-download` juga aktif. Modul `inspect`,
 `git_write`, dan `git_remote` bisa dimatikan dengan `--disable-tools` supaya
 daftar tool yang dikirim ke model lebih hemat token. Daftar lengkap ada di
 [docs/tools.md](docs/tools.md).

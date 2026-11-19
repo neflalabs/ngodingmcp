@@ -24,7 +24,6 @@ type runCommandArgs struct {
 
 func addRunCommand(s *mcp.Server, run *runner.Runner) {
 	desc := "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. " +
-		"A non-zero exit is reported in the result. " +
 		allowlistDescription(run.Allowlist(), run.ExactAllowlist())
 	// The transcript in the text content is the whole result; a structured
 	// copy would repeat the command output. The exit status also goes into

@@ -24,54 +24,7 @@
       ],
       "type": "object"
     },
-    "name": "count_tokens",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "items": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "bytes": {
-                "type": "integer"
-              },
-              "estimatedTokens": {
-                "type": "integer"
-              },
-              "lines": {
-                "type": "integer"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "bytes",
-              "lines",
-              "estimatedTokens"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "totalBytes": {
-          "type": "integer"
-        },
-        "totalEstimatedTokens": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "items",
-        "totalBytes",
-        "totalEstimatedTokens"
-      ],
-      "type": "object"
-    }
+    "name": "count_tokens"
   },
   {
     "annotations": {
@@ -423,7 +376,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin (or the given remote). Nothing is pushed.",
+    "description": "Create an empty GitHub repo with gh and add it as remote origin; private by default; nothing is pushed.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -432,19 +385,19 @@
           "type": "string"
         },
         "name": {
-          "description": "new repository name, e.g. ngodingmcp",
+          "description": "repository name",
           "type": "string"
         },
         "owner": {
-          "description": "organisation; default is the account gh is logged in as",
+          "description": "org; defaults to the gh account",
           "type": "string"
         },
         "remote": {
-          "description": "remote name to add for the new repository (default origin)",
+          "description": "remote (default origin)",
           "type": "string"
         },
         "skip_remote": {
-          "description": "only create the repository on GitHub; do not add a remote",
+          "description": "create only; no remote",
           "type": "boolean"
         },
         "visibility": {
@@ -466,16 +419,16 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). Needs write access.",
+    "description": "Re-run an Actions run; failed_only only failed jobs.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "failed_only": {
-          "description": "only re-run failed jobs instead of the entire workflow run",
+          "description": "only failed jobs",
           "type": "boolean"
         },
         "run_id": {
-          "description": "workflow run database ID from git_github_runs",
+          "description": "run ID from git_github_runs",
           "type": "integer"
         }
       },
@@ -492,24 +445,24 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). run_id 0 = latest.",
+    "description": "Inspect an Actions run: jobs, steps, status; failed_logs adds failed step logs.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "branch filter when run_id is omitted",
+          "description": "branch filter when run_id is 0",
           "type": "string"
         },
         "failed_logs": {
-          "description": "include logs from failed steps (--log-failed, truncated to last 32 KiB)",
+          "description": "include failed step logs (last 32 KiB)",
           "type": "boolean"
         },
         "run_id": {
-          "description": "run ID from git_github_runs; 0 = latest",
+          "description": "run ID; 0 = latest",
           "type": "integer"
         },
         "workflow": {
-          "description": "workflow file name or name when run_id is omitted",
+          "description": "workflow name when run_id is 0",
           "type": "string"
         }
       },
@@ -523,24 +476,24 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). Optionally filtered.",
+    "description": "List recent GitHub Actions runs via gh.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "branch name to filter runs",
+          "description": "branch filter",
           "type": "string"
         },
         "limit": {
-          "description": "max runs to return (default 10, max 50)",
+          "description": "max runs (default 10, max 50)",
           "type": "integer"
         },
         "status": {
-          "description": "status or conclusion, e.g. failure",
+          "description": "status or conclusion",
           "type": "string"
         },
         "workflow": {
-          "description": "workflow file name or name, e.g. ci.yml",
+          "description": "workflow name, e.g. ci.yml",
           "type": "string"
         }
       },
@@ -599,12 +552,12 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). A conflict aborts the merge and lists the files.",
+    "description": "Merge a branch, origin/\u003cbranch\u003e or commit; needs a clean tree; conflicts abort and list files.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "ff_only": {
-          "description": "only fast-forward; refuse to create a merge commit",
+          "description": "fast-forward only",
           "type": "boolean"
         },
         "message": {
@@ -630,16 +583,16 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed (use git_merge). No rebase.",
+    "description": "Fetch and fast-forward the current branch; diverged is refused (use git_merge).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "remote branch (default: upstream branch, else the current branch name)",
+          "description": "remote branch (default upstream, else current)",
           "type": "string"
         },
         "remote": {
-          "description": "remote to pull from (default: upstream remote, else origin)",
+          "description": "remote (default upstream, else origin)",
           "type": "string"
         }
       },
@@ -654,24 +607,24 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; set_upstream=true on a first push.",
+    "description": "Push one local branch (default current) to a remote; never force, delete or push tags.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "local branch to push (default: the current branch)",
+          "description": "local branch (default current)",
           "type": "string"
         },
         "remote": {
-          "description": "remote to push to (default: the branch's upstream remote, else origin)",
+          "description": "remote (default upstream, else origin)",
           "type": "string"
         },
         "remote_branch": {
-          "description": "branch name on the remote (default: the upstream branch, else the same name)",
+          "description": "remote branch (default upstream, else same)",
           "type": "string"
         },
         "set_upstream": {
-          "description": "set the upstream (first push)",
+          "description": "set upstream (first push)",
           "type": "boolean"
         }
       },
@@ -685,7 +638,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "List, add, set_url or remove remotes. Only https and ssh URLs, without credentials; remove never touches local branches.",
+    "description": "List, add, set_url or remove remotes; https/ssh only, no credentials.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -694,11 +647,11 @@
           "type": "string"
         },
         "name": {
-          "description": "remote name for add, set_url and remove, e.g. origin",
+          "description": "remote name, e.g. origin",
           "type": "string"
         },
         "url": {
-          "description": "https://host/owner/repo.git or git@host:owner/repo.git",
+          "description": "https or ssh repository URL",
           "type": "string"
         }
       },
@@ -979,6 +932,31 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
+    "description": "List top-level symbols with line ranges; Go AST plus a JS/TS fallback.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "if_changed_since": {
+          "description": "hash from a previous read; unchanged when equal",
+          "type": "string"
+        },
+        "path": {
+          "description": "path relative to workspace root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "type": "object"
+    },
+    "name": "outline"
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
     "description": "Read process output: after_seq = the last nextSeq for new lines only, else the last tail_lines.",
     "inputSchema": {
       "additionalProperties": false,
@@ -1015,10 +993,14 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a text file as numbered lines; offset and limit select a slice.",
+    "description": "Read text as numbered lines; offset/limit slice, if_changed_since skips unchanged.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "if_changed_since": {
+          "description": "hash from a previous read; unchanged when equal",
+          "type": "string"
+        },
         "limit": {
           "description": "maximum number of lines to return (default all)",
           "type": "integer"
@@ -1038,6 +1020,89 @@
       "type": "object"
     },
     "name": "read_file"
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read several files or ranges in one call; total content capped (default 64 KiB).",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "description": "file slices to read, in order",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "if_changed_since": {
+                "description": "hash from a previous read; unchanged when equal",
+                "type": "string"
+              },
+              "limit": {
+                "description": "max lines",
+                "type": "integer"
+              },
+              "offset": {
+                "description": "1-based first line",
+                "type": "integer"
+              },
+              "path": {
+                "description": "path relative to workspace root",
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          },
+          "type": [
+            "null",
+            "array"
+          ]
+        },
+        "max_bytes": {
+          "description": "total content budget (default 65536, max 1048576)",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "files"
+      ],
+      "type": "object"
+    },
+    "name": "read_files"
+  },
+  {
+    "annotations": {
+      "idempotentHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read one top-level function or type by name.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "if_changed_since": {
+          "description": "hash from a previous read; unchanged when equal",
+          "type": "string"
+        },
+        "path": {
+          "description": "path relative to workspace root",
+          "type": "string"
+        },
+        "symbol": {
+          "description": "name as shown by outline",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "symbol"
+      ],
+      "type": "object"
+    },
+    "name": "read_symbol"
   },
   {
     "annotations": {
@@ -1139,7 +1204,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. A non-zero exit is reported in the result. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
+    "description": "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1184,7 +1249,7 @@
       "additionalProperties": false,
       "properties": {
         "dry_run": {
-          "description": "if true, show what would change without writing",
+          "description": "preview only",
           "type": "boolean"
         },
         "glob": {
@@ -1360,7 +1425,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Check syntax without running: full parse for Go/JSON, delimiters for JS/TS/CSS; other types return check=none.",
+    "description": "Check syntax: Go/JSON parse, JS/TS/CSS delimiters; other types return check=none.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1374,57 +1439,7 @@
       ],
       "type": "object"
     },
-    "name": "validate_syntax",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "check": {
-          "type": "string"
-        },
-        "errors": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "col": {
-                "type": "integer"
-              },
-              "line": {
-                "type": "integer"
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "line",
-              "col",
-              "message"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "language": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "valid": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "path",
-        "language",
-        "valid",
-        "errors"
-      ],
-      "type": "object"
-    }
+    "name": "validate_syntax"
   },
   {
     "annotations": {

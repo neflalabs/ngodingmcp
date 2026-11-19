@@ -112,7 +112,7 @@ type searchReplaceArgs struct {
 	Replacement string `json:"replacement" jsonschema:"replacement string; supports $1, $2 for capture groups"`
 	Path        string `json:"path,omitempty" jsonschema:"directory to search; omit for the workspace root"`
 	Glob        string `json:"glob,omitempty" jsonschema:"glob filter, e.g. *.go or **/*.go"`
-	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"if true, show what would change without writing"`
+	DryRun      bool   `json:"dry_run,omitempty" jsonschema:"preview only"`
 	MaxFiles    int    `json:"max_files,omitempty" jsonschema:"maximum number of files to modify (default 50)"`
 }
 

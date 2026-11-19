@@ -65,9 +65,9 @@ func NewWithOptions(ws *workspace.Workspace, version string, opts Options) *mcp.
 		&mcp.ServerOptions{Instructions: instructions},
 	)
 
-	// Core tools: registered unless their module is disabled (35 in total).
+	// Core tools: registered unless their module is disabled (38 in total).
 	on := newModuleSet(opts.Disabled)
-	addFileTools(s, ws)   // read_file, write_file, list_files, file_info, mkdir_path, move_path, delete_path
+	addFileTools(s, ws)   // read_file, outline, read_symbol, read_files, write_file, list_files, file_info, mkdir_path, move_path, delete_path
 	addEditTools(s, ws)   // replace_text, edit_file, insert_text, delete_lines, replace_lines
 	addSearchTools(s, ws) // search_text, search_and_replace
 	if on.enabled(ModuleInspect) {

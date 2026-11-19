@@ -92,9 +92,9 @@ type validateSyntaxOut struct {
 }
 
 func addValidateSyntax(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "validate_syntax",
-		Description: "Check syntax without running: full parse for Go/JSON, delimiters for JS/TS/CSS; other types return check=none.",
+		Description: "Check syntax: Go/JSON parse, JS/TS/CSS delimiters; other types return check=none.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in validateSyntaxArgs) (*mcp.CallToolResult, validateSyntaxOut, error) {
 		res, err := ws.ValidateSyntax(in.Path)
@@ -133,7 +133,7 @@ type countTokensOut struct {
 }
 
 func addCountTokens(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "count_tokens",
 		Description: "Estimate tokens (bytes/4) without returning contents; dependency/cache dirs are skipped.",
 		Annotations: readOnly(),
