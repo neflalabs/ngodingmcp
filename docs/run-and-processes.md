@@ -25,9 +25,11 @@ Saat aktif, policy memakai daftar **predefined di kode** (`internal/runner/polic
 | `git diff` | |
 | `git log` | |
 
-`staticcheck` harus sudah ter-install di `PATH` mesin server (misalnya
-`go install honnef.co/go/tools/cmd/staticcheck@v0.8.2`); flag `-debug.*`-nya
-ditolak karena bisa menulis file ke path mana saja.
+`staticcheck` opsional: entri ini cuma berguna kalau programnya kebetulan ada
+di `PATH` server. Tidak perlu di-install dan tidak perlu mengubah unit systemd,
+karena CI dan `make check` sudah menjalankannya lewat `go run` (lihat
+`development.md`). Flag `-debug.*`-nya ditolak karena bisa menulis file ke path
+mana saja.
 
 `ngodingmcp restart` tidak dijalankan sebagai program. Hasil tool dikirim dulu,
 lalu sekitar satu detik kemudian server menjalankan
