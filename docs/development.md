@@ -30,6 +30,8 @@ ngodingmcp/
 │   ├── mcpserver/              # definisi MCP tools, satu file per domain:
 │   │   ├── server.go           #   Options, konstruktor, daftar tool aktif, middleware
 │   │   ├── helpers.go          #   textResult, preset anotasi, helper kecil
+│   │   ├── register.go         #   addTextTool / addUntypedTool: isi hasil dan outputSchema
+│   │   ├── modules.go          #   modul tool inti yang bisa dimatikan (--disable-tools)
 │   │   ├── safe_error.go       #   scrub path host dari error, tahan workspace selama tool call
 │   │   ├── activity.go         #   log aktivitas per tool call
 │   │   ├── tools_file.go       #   read/write/list/info/mkdir/move/delete
@@ -76,4 +78,14 @@ go test ./internal/mcpserver -run TestToolContract -args -update
 
 Menambah tool baru: tulis di file `tools_<domain>.go` yang sesuai, daftarkan di
 `server.go`, lalu perbarui snapshot di atas dan jumlah tool di
-[tools.md](tools.md) dan README.
+[tools.md](tools.md) dan README. Daftarkan lewat `addTextTool` kalau hasilnya
+isi file/listing/log, `addUntypedTool` kalau hasilnya konfirmasi, dan
+`mcp.AddTool` hanya untuk record kecil yang memang butuh `outputSchema` (lihat
+[tools.md](tools.md#isi-hasil-tool)).
+
+Ukuran `tools/list` dijaga `TestToolsListBudget` (`tools_budget_test.go`):
+test gagal kalau daftar tool melewati budget. Rincian per tool dan per field:
+
+```sh
+go test ./internal/mcpserver -run 'TestToolsListTokens|TestToolsListBudget' -v
+```

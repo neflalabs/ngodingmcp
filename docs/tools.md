@@ -16,6 +16,40 @@ Daftar tool aktif bisa dicek di TUI (baris `tools: N active`). Kontrak semua 43
 tool (nama, deskripsi, anotasi, schema) dikunci di
 `internal/mcpserver/testdata/tools.golden.json`, lihat [development.md](development.md).
 
+### Profil: mematikan modul tool
+
+Daftar tool dikirim ke model di awal setiap sesi, jadi tool yang tidak dipakai
+tetap makan token. Tiga modul tool inti bisa dimatikan dengan `--disable-tools`,
+`NGODINGMCP_DISABLE_TOOLS`, atau `disableTools` di `config.json` (dipisah koma):
+
+| Modul | Tool |
+|---|---|
+| `inspect` | `workspace_stats`, `validate_syntax`, `count_tokens` |
+| `git_write` | `git_init`, `git_add`, `git_unstage`, `git_commit`, `git_create_branch`, `git_switch_branch` |
+| `git_remote` | `git_remote`, `git_fetch`, `git_pull`, `git_push`, `git_merge`, `git_github_*` |
+
+Tool file, edit, search, dan git read-only (`git_status`, `git_diff`, `git_log`)
+selalu aktif. Contoh profil paling kecil:
+`--disable-tools inspect,git_write,git_remote` (17 tool).
+
+### Isi hasil tool
+
+Teks (`content`) adalah hasil utama setiap tool. Client tidak seragam soal apa
+yang diteruskan ke model, jadi isi yang sama tidak dikirim dua kali:
+
+- Tool yang hasilnya isi file, listing, diff, atau log (`read_file`,
+  `list_files`, `edit_file`, `search_text`, `workspace_stats`, `process_logs`,
+  `git_status`, `git_diff`, `git_log`, `git_github_runs`, `git_github_run_view`,
+  `run_command`) hanya mengirim teks, tanpa `structuredContent` dan tanpa
+  `outputSchema`.
+- Tool konfirmasi (tulis, pindah, hapus, edit baris, git write/remote, kontrol
+  proses, `download_file`) tetap mengirim `structuredContent`, tapi tanpa
+  `outputSchema`.
+- `file_info`, `validate_syntax`, `count_tokens`, dan `list_processes` tetap
+  punya `outputSchema`.
+- Exit code `run_command` ada di teks dan di `_meta`
+  (`ngodingmcp/exitCode`, `ngodingmcp/timedOut`).
+
 ## Tool inti (selalu aktif)
 
 | Domain | Tool |

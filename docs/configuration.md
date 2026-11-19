@@ -58,10 +58,12 @@ mematikan OAuth diam-diam.
 | `--public-url` | `NGODINGMCP_PUBLIC_URL` | kosong (issuer diturunkan dari header `Host`) |
 | `--trusted-proxy` | `NGODINGMCP_TRUSTED_PROXIES` | `loopback` (peer yang `X-Forwarded-Proto`-nya dipercaya) |
 | `--oauth` | `NGODINGMCP_OAUTH` | `true` (OAuth aktif; `--oauth=false` mematikan) |
+| `--disable-tools` | `NGODINGMCP_DISABLE_TOOLS` | kosong (semua modul tool inti aktif) |
 
 Penjelasan run/allowlist: [run-and-processes.md](run-and-processes.md).
 Penjelasan OAuth: [oauth.md](oauth.md).
 Penjelasan download: [tools.md](tools.md#download_file).
+Modul yang bisa dimatikan: [tools.md](tools.md#profil-mematikan-modul-tool).
 
 ## `config.json`
 
@@ -88,6 +90,10 @@ Lokasi: `~/.config/ngodingmcp/config.json`.
   `allowSensitive` yang langsung berlaku; environment dan flag tetap menimpa file saat start. Pola non-interaktif tetap
   tersedia: `ngodingmcp serve --public-url ... --trusted-proxy ... --oauth=false`,
   atau file env service.
+- Field `disableTools`: array nama modul tool inti yang tidak didaftarkan
+  (`inspect`, `git_write`, `git_remote`), misalnya `["git_remote"]`. Nama yang
+  tidak dikenal membuat start gagal dengan daftar nama yang valid. Belum ada di
+  Web UI Settings; isi lewat file ini, env, atau flag.
 - Signing key, client OAuth terdaftar, dan hash refresh token disimpan di
   `~/.config/ngodingmcp/oauth.json` (bukan di `config.json`). Lihat [oauth.md](oauth.md).
 - Dipakai lagi pada run berikutnya, termasuk `ngodingmcp serve` tanpa flag.

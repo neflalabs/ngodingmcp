@@ -32,7 +32,9 @@ Browser (Web UI) ──────────┘
   private key, `.git`) diblokir secara default.
 
 Jumlah tool: 35 secara default, 42 dengan `--allow-run` (+ `run_command` dan 6
-tool proses), 43 kalau `--allow-download` juga aktif. Daftar lengkap ada di
+tool proses), 43 kalau `--allow-download` juga aktif. Modul `inspect`,
+`git_write`, dan `git_remote` bisa dimatikan dengan `--disable-tools` supaya
+daftar tool yang dikirim ke model lebih hemat token. Daftar lengkap ada di
 [docs/tools.md](docs/tools.md).
 
 ## Requirements
