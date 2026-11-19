@@ -96,7 +96,7 @@ type Server struct {
 // token is generated when cfg.Token is empty.
 func New(cfg Config) (*Server, error) {
 	if cfg.Addr == "" {
-		cfg.Addr = "127.0.0.1:8080"
+		cfg.Addr = config.DefaultAddr
 	}
 	if cfg.MaxFileBytes <= 0 {
 		cfg.MaxFileBytes = 2 << 20

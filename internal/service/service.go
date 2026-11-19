@@ -28,7 +28,7 @@ const (
 	Unit = Name + ".service"
 	// DefaultAddr is the listen address when neither the env file nor the
 	// config sets one (same default as `ngodingmcp serve`).
-	DefaultAddr = "127.0.0.1:8080"
+	DefaultAddr = config.DefaultAddr
 )
 
 var (

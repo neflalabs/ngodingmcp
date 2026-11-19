@@ -9,10 +9,8 @@ import (
 	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/procman"
-	"os"
 	"os/exec"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -54,9 +52,10 @@ type Model struct {
 	allowSensitive bool
 	allowDownload  bool
 
-	publicURL      string
-	oauthDisabled  bool
-	trustedProxies []string
+	// settings holds what config.Resolve read from the environment and
+	// config.json (the same source `serve` uses); configErr is its error.
+	settings  config.Settings
+	configErr error
 
 	srv     *app.Server
 	running bool
@@ -83,41 +82,35 @@ func New(version string) *Model {
 }
 
 // NewWithPreset builds the TUI model like New, but lets command-line flags
-// override the saved settings. Empty values fall back to the saved config.
+// override the other settings. The order is the same as for `serve`:
+// flag > environment > config.json > default. Empty flag values fall back.
+// A malformed NGODINGMCP_* variable is kept in ConfigError and shown, and
+// the server refuses to start until it is fixed.
 func NewWithPreset(version, root, addr, token string) *Model {
 	saved := config.Load()
+	s, err := config.Resolve(saved)
 
 	m := &Model{version: version, built: buildinfo.Get().Built(), logs: NewLogBuffer(500)}
+	m.settings = s
+	m.configErr = err
+	if err != nil {
+		m.errMsg = "invalid environment: " + err.Error()
+	}
 
 	defaults := [fieldCount]string{
-		config.FirstNonEmpty(root, saved.Root, os.Getenv("NGODINGMCP_ROOT"), defaultRoot()),
-		config.FirstNonEmpty(addr, saved.Addr, os.Getenv("NGODINGMCP_ADDR"), "127.0.0.1:8080"),
-		config.FirstNonEmpty(token, saved.Token, os.Getenv("NGODINGMCP_TOKEN")),
+		config.FirstNonEmpty(root, s.Root),
+		config.FirstNonEmpty(addr, s.Addr),
+		config.FirstNonEmpty(token, s.Token),
 		"",
 		"",
 		"",
 	}
-	m.runEnabled = saved.Run.Enabled
-	m.allowSensitive = saved.AllowSensitive
-	m.allowDownload = saved.AllowDownload
-	m.publicURL = config.FirstNonEmpty(os.Getenv("NGODINGMCP_PUBLIC_URL"), saved.PublicURL)
-	m.trustedProxies = config.SplitList(os.Getenv("NGODINGMCP_TRUSTED_PROXIES"))
-	if len(m.trustedProxies) == 0 {
-		m.trustedProxies = saved.TrustedProxies
-	}
-	if len(m.trustedProxies) == 0 {
-		m.trustedProxies = []string{"loopback"}
-	}
-	oauthEnabled := true
-	if saved.OAuth != nil {
-		oauthEnabled = *saved.OAuth
-	}
-	if v, ok := os.LookupEnv("NGODINGMCP_OAUTH"); ok {
-		if b, err := strconv.ParseBool(strings.TrimSpace(v)); err == nil {
-			oauthEnabled = b
-		}
-	}
-	m.oauthDisabled = !oauthEnabled
+	m.runEnabled = s.AllowRun
+	m.allowDownload = s.AllowDownload
+	// Unlike `serve`, the control panel may start from the saved toggle: it
+	// is on screen with a warning before anything starts. The environment
+	// still wins.
+	m.allowSensitive, _ = config.EnvBool("NGODINGMCP_ALLOW_SENSITIVE", saved.AllowSensitive)
 
 	for i := range m.inputs {
 		ti := textinput.New()
@@ -246,7 +239,15 @@ func (m *Model) cycleFocus(delta int) {
 	}
 }
 
+// ConfigError reports a malformed NGODINGMCP_* variable found when the
+// model was built; nil when the environment is fine.
+func (m *Model) ConfigError() error { return m.configErr }
+
 func (m *Model) start() {
+	if m.configErr != nil {
+		m.errMsg = "cannot start: invalid environment: " + m.configErr.Error()
+		return
+	}
 	m.errMsg = ""
 	name := strings.TrimSpace(m.inputs[fieldRoot].Value())
 	if name == "" {
@@ -255,17 +256,23 @@ func (m *Model) start() {
 	}
 
 	srv, err := app.New(app.Config{
-		Addr:           strings.TrimSpace(m.inputs[fieldAddr].Value()),
-		Root:           name,
-		Token:          strings.TrimSpace(m.inputs[fieldToken].Value()),
-		AllowRun:       m.runEnabled,
-		AllowSensitive: m.allowSensitive,
-		AllowDownload:  m.allowDownload,
-		PublicURL:      m.publicURL,
-		OAuthDisabled:  m.oauthDisabled,
-		TrustedProxies: m.trustedProxies,
-		Version:        m.version,
-		LogWriter:      m.logs,
+		Addr:               strings.TrimSpace(m.inputs[fieldAddr].Value()),
+		Root:               name,
+		Token:              strings.TrimSpace(m.inputs[fieldToken].Value()),
+		AllowRun:           m.runEnabled,
+		AllowSensitive:     m.allowSensitive,
+		RunAllowlist:       config.SplitList(m.settings.RunAllow),
+		RunExactAllowlist:  config.SplitList(m.settings.RunExact),
+		RunTimeout:         m.settings.RunTimeout,
+		AllowDownload:      m.allowDownload,
+		DownloadAllowHosts: config.SplitList(m.settings.DownloadHosts),
+		DownloadMaxBytes:   m.settings.DownloadMaxBytes,
+		UploadMaxBytes:     m.settings.UploadMaxBytes,
+		PublicURL:          m.settings.PublicURL,
+		OAuthDisabled:      !m.settings.OAuth,
+		TrustedProxies:     config.SplitList(m.settings.TrustedProxies),
+		Version:            m.version,
+		LogWriter:          m.logs,
 	})
 	if err != nil {
 		m.errMsg = err.Error()
@@ -342,19 +349,4 @@ func openURL(u string) error {
 		cmd = exec.Command("xdg-open", u)
 	}
 	return cmd.Start()
-}
-
-func defaultRoot() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "ngodingmcp-workspace"
-	}
-	return home + string(os.PathSeparator) + "ngodingmcp-workspace"
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

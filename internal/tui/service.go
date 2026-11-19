@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"ngodingmcp/internal/app"
+	"ngodingmcp/internal/config"
 )
 
 // startError turns a failed listen into a message the user can act on. The
@@ -15,7 +16,7 @@ func (m *Model) startError(addr string, err error) string {
 		return "cannot start: " + err.Error()
 	}
 	if addr == "" {
-		addr = "127.0.0.1:8080"
+		addr = config.DefaultAddr
 	}
 	url := app.BaseURLFor(addr) + "/"
 	if m.serviceRunning != nil && m.serviceRunning() {

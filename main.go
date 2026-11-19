@@ -10,8 +10,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -156,6 +154,11 @@ func stdinIsTerminal() bool {
 
 func runTUI(root, addr, token string) error {
 	model := tui.NewWithPreset(buildinfo.Version(), root, addr, token)
+	if err := model.ConfigError(); err != nil {
+		// Same rule as `serve`: a malformed NGODINGMCP_* variable is
+		// reported, not silently ignored.
+		return err
+	}
 	if mgr, err := service.New(); err == nil {
 		// Only consulted when the port is taken, to say the service holds it.
 		model.SetServiceProbe(func() bool {
@@ -197,59 +200,34 @@ func parseServerFlags(args []string) (*serverOptions, error) {
 	fs := flag.NewFlagSet("ngodingmcp serve", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 
-	saved := config.Load()
-
-	fs.StringVar(&opts.addr, "addr", envOr("NGODINGMCP_ADDR", config.FirstNonEmpty(saved.Addr, "127.0.0.1:8080")), "HTTP listen address")
-	fs.StringVar(&opts.root, "root", envOr("NGODINGMCP_ROOT", config.FirstNonEmpty(saved.Root, filepath.Join(homeDir(), "ngodingmcp-workspace"))), "workspace root directory (created if missing)")
-	fs.StringVar(&opts.token, "token", envOr("NGODINGMCP_TOKEN", saved.Token), "shared auth token (generated if empty)")
-	fs.Int64Var(&opts.maxFileBytes, "max-file-bytes", 2<<20, "maximum file size read by tools, in bytes")
-
-	// Resolve environment-backed defaults strictly: a misspelled or invalid
-	// value aborts startup with the variable named, instead of silently
+	// Defaults come from the environment, then config.json, then built-ins
+	// (config.Resolve, shared with the TUI); flags override them. A
+	// malformed variable aborts startup with its name instead of silently
 	// falling back (e.g. NGODINGMCP_OAUTH=yes used to silently disable
 	// OAuth).
-	allowRun, err := envBoolFrom("NGODINGMCP_ALLOW_RUN", saved.Run.Enabled)
-	if err != nil {
-		return nil, err
-	}
-	runTimeout, err := envDuration("NGODINGMCP_RUN_TIMEOUT", time.Minute)
-	if err != nil {
-		return nil, err
-	}
-	allowSensitive, err := envBoolFrom("NGODINGMCP_ALLOW_SENSITIVE", false)
-	if err != nil {
-		return nil, err
-	}
-	allowDownload, err := envBoolFrom("NGODINGMCP_ALLOW_DOWNLOAD", saved.AllowDownload)
-	if err != nil {
-		return nil, err
-	}
-	downloadMaxBytes, err := envInt64("NGODINGMCP_DOWNLOAD_MAX_BYTES", 20<<20)
-	if err != nil {
-		return nil, err
-	}
-	uploadMaxBytes, err := envInt64("NGODINGMCP_UPLOAD_MAX_BYTES", 20<<20)
-	if err != nil {
-		return nil, err
-	}
-	oauthEnabled, err := envBoolFrom("NGODINGMCP_OAUTH", oauthSavedOr(saved, true))
+	s, err := config.Resolve(config.Load())
 	if err != nil {
 		return nil, err
 	}
 
-	fs.BoolVar(&opts.allowRun, "allow-run", allowRun, "enable the opt-in run_command and background process tools")
-	fs.StringVar(&opts.runAllow, "run-allow", os.Getenv("NGODINGMCP_RUN_ALLOWLIST"), "override the built-in command prefixes allowed for run_command")
-	fs.StringVar(&opts.runExact, "run-allow-exact", os.Getenv("NGODINGMCP_RUN_ALLOWLIST_EXACT"), "override the built-in exact commands allowed for run_command")
-	fs.DurationVar(&opts.runTimeout, "run-timeout", runTimeout, "per-command timeout for run_command")
-	fs.BoolVar(&opts.allowSensitive, "allow-sensitive", allowSensitive, "allow tools to read, list and edit sensitive files (.env, keys, .git internals)")
+	fs.StringVar(&opts.addr, "addr", s.Addr, "HTTP listen address")
+	fs.StringVar(&opts.root, "root", s.Root, "workspace root directory (created if missing)")
+	fs.StringVar(&opts.token, "token", s.Token, "shared auth token (generated if empty)")
+	fs.Int64Var(&opts.maxFileBytes, "max-file-bytes", 2<<20, "maximum file size read by tools, in bytes")
 
-	fs.BoolVar(&opts.allowDownload, "allow-download", allowDownload, "enable the opt-in download_file tool (https, public hosts only)")
-	fs.StringVar(&opts.downloadHosts, "download-allow-host", os.Getenv("NGODINGMCP_DOWNLOAD_ALLOW_HOSTS"), "limit download_file to these hosts (comma-separated); empty means any public host")
-	fs.Int64Var(&opts.downloadMaxBytes, "download-max-bytes", downloadMaxBytes, "maximum size per download_file call, in bytes")
-	fs.Int64Var(&opts.uploadMaxBytes, "upload-max-bytes", uploadMaxBytes, "maximum size per file uploaded through the web UI, in bytes")
-	fs.StringVar(&opts.publicURL, "public-url", envOr("NGODINGMCP_PUBLIC_URL", saved.PublicURL), "external base URL of this server (e.g. \"https://mcp.example.com\"); used as the OAuth issuer/resource identifier")
-	fs.BoolVar(&opts.oauth, "oauth", oauthEnabled, "enable the embedded OAuth authorization server for /mcp (static token still works)")
-	fs.StringVar(&opts.trustedProxies, "trusted-proxy", envOr("NGODINGMCP_TRUSTED_PROXIES", config.FirstNonEmpty(strings.Join(saved.TrustedProxies, ","), "loopback")), "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
+	fs.BoolVar(&opts.allowRun, "allow-run", s.AllowRun, "enable the opt-in run_command and background process tools")
+	fs.StringVar(&opts.runAllow, "run-allow", s.RunAllow, "override the built-in command prefixes allowed for run_command")
+	fs.StringVar(&opts.runExact, "run-allow-exact", s.RunExact, "override the built-in exact commands allowed for run_command")
+	fs.DurationVar(&opts.runTimeout, "run-timeout", s.RunTimeout, "per-command timeout for run_command")
+	fs.BoolVar(&opts.allowSensitive, "allow-sensitive", s.AllowSensitive, "allow tools to read, list and edit sensitive files (.env, keys, .git internals)")
+
+	fs.BoolVar(&opts.allowDownload, "allow-download", s.AllowDownload, "enable the opt-in download_file tool (https, public hosts only)")
+	fs.StringVar(&opts.downloadHosts, "download-allow-host", s.DownloadHosts, "limit download_file to these hosts (comma-separated); empty means any public host")
+	fs.Int64Var(&opts.downloadMaxBytes, "download-max-bytes", s.DownloadMaxBytes, "maximum size per download_file call, in bytes")
+	fs.Int64Var(&opts.uploadMaxBytes, "upload-max-bytes", s.UploadMaxBytes, "maximum size per file uploaded through the web UI, in bytes")
+	fs.StringVar(&opts.publicURL, "public-url", s.PublicURL, "external base URL of this server (e.g. \"https://mcp.example.com\"); used as the OAuth issuer/resource identifier")
+	fs.BoolVar(&opts.oauth, "oauth", s.OAuth, "enable the embedded OAuth authorization server for /mcp (static token still works)")
+	fs.StringVar(&opts.trustedProxies, "trusted-proxy", s.TrustedProxies, "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -368,75 +346,4 @@ func printBanner(srv *app.Server) {
 		fmt.Fprintf(os.Stderr, "  token:     (from flag/env)\n")
 	}
 	fmt.Fprintf(os.Stderr, "\n  Tip: run `ngodingmcp tui` for an interactive control panel.\n\n")
-}
-
-func envOr(key, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
-	}
-	return fallback
-}
-
-func envBool(key string, fallback bool) (bool, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || strings.TrimSpace(v) == "" {
-		return fallback, nil
-	}
-	b, err := strconv.ParseBool(strings.TrimSpace(v))
-	if err != nil {
-		return false, fmt.Errorf("%s: invalid boolean %q (use 1, t, T, TRUE, true, True, 0, f, F, FALSE, false, False)", key, v)
-	}
-	return b, nil
-}
-
-// envBoolFrom reads the environment as a strict boolean; an invalid value
-// is an error, not a silent fallback.
-func envBoolFrom(key string, fallback bool) (bool, error) {
-	return envBool(key, fallback)
-}
-
-// oauthSavedOr returns the OAuth setting from config.json when set,
-// otherwise the default (enabled).
-func oauthSavedOr(saved config.Config, fallback bool) bool {
-	if saved.OAuth == nil {
-		return fallback
-	}
-	return *saved.OAuth
-}
-
-func envDuration(key string, fallback time.Duration) (time.Duration, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || strings.TrimSpace(v) == "" {
-		return fallback, nil
-	}
-	d, err := time.ParseDuration(strings.TrimSpace(v))
-	if err != nil {
-		return 0, fmt.Errorf("%s: invalid duration %q (examples: 30s, 5m)", key, v)
-	}
-	if d <= 0 {
-		return 0, fmt.Errorf("%s: duration must be positive, got %q", key, v)
-	}
-	return d, nil
-}
-
-func envInt64(key string, fallback int64) (int64, error) {
-	v, ok := os.LookupEnv(key)
-	if !ok || strings.TrimSpace(v) == "" {
-		return fallback, nil
-	}
-	n, err := strconv.ParseInt(strings.TrimSpace(v), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("%s: invalid integer %q", key, v)
-	}
-	if n <= 0 {
-		return 0, fmt.Errorf("%s: value must be positive, got %q", key, v)
-	}
-	return n, nil
-}
-
-func homeDir() string {
-	if h, err := os.UserHomeDir(); err == nil && h != "" {
-		return h
-	}
-	return "."
 }

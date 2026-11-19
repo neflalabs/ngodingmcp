@@ -166,36 +166,6 @@ func TestParseServerFlagsDownload(t *testing.T) {
 	}
 }
 
-func TestEnvBoolAndDuration(t *testing.T) {
-	t.Setenv("RUNNER_TEST_BOOL", "true")
-	b, err := envBool("RUNNER_TEST_BOOL", false)
-	if err != nil || !b {
-		t.Errorf("envBool(true) = %v, %v", b, err)
-	}
-	t.Setenv("RUNNER_TEST_BOOL", "not-a-bool")
-	if b, err := envBool("RUNNER_TEST_BOOL", false); err == nil {
-		t.Errorf("envBool(invalid) = %v, want error", b)
-	}
-	t.Setenv("RUNNER_TEST_BOOL", "")
-	if b, err := envBool("RUNNER_TEST_BOOL", true); err != nil || !b {
-		t.Errorf("envBool(unset) = %v, %v, want fallback true", b, err)
-	}
-
-	t.Setenv("RUNNER_TEST_DUR", "45s")
-	d, err := envDuration("RUNNER_TEST_DUR", time.Minute)
-	if err != nil || d != 45*time.Second {
-		t.Errorf("envDuration = %v, %v", d, err)
-	}
-	t.Setenv("RUNNER_TEST_DUR", "bogus")
-	if _, err := envDuration("RUNNER_TEST_DUR", time.Minute); err == nil {
-		t.Error("envDuration(bogus): want error")
-	}
-	t.Setenv("RUNNER_TEST_DUR", "-5s")
-	if _, err := envDuration("RUNNER_TEST_DUR", time.Minute); err == nil {
-		t.Error("envDuration(negative): want error")
-	}
-}
-
 func TestParseServerFlagsLoadsRunPolicyFromConfig(t *testing.T) {
 	if runtime.GOOS != "linux" {
 		t.Skip("XDG_CONFIG_HOME override is Linux-specific")
