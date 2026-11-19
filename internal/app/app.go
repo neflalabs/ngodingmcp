@@ -26,6 +26,7 @@ import (
 	"ngodingmcp/internal/oauth"
 	"ngodingmcp/internal/procman"
 	"ngodingmcp/internal/runner"
+	"ngodingmcp/internal/selfrestart"
 	"ngodingmcp/internal/webui"
 	"ngodingmcp/internal/workspace"
 )
@@ -146,6 +147,7 @@ func New(cfg Config) (*Server, error) {
 			Allowlist:      allow,
 			ExactAllowlist: exact,
 			Timeout:        cfg.RunTimeout,
+			Restart:        selfrestart.New(logger).Schedule,
 		})
 		if err != nil {
 			return nil, err

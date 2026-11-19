@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"ngodingmcp/internal/config"
+	"ngodingmcp/internal/selfrestart"
 )
 
 // fakeSystemd stands in for systemctl and journalctl. It records every call
@@ -418,5 +419,13 @@ func TestEnvRefAndQuoting(t *testing.T) {
 	}
 	if got := UIURL("127.0.0.1:8080"); got != "http://127.0.0.1:8080/" {
 		t.Errorf("UIURL = %q", got)
+	}
+}
+
+// selfrestart cannot import this package (it would import app), so it keeps
+// its own copy of the unit name; the two must stay equal.
+func TestUnitMatchesSelfRestart(t *testing.T) {
+	if Unit != selfrestart.Unit {
+		t.Fatalf("service.Unit = %q, selfrestart.Unit = %q", Unit, selfrestart.Unit)
 	}
 }

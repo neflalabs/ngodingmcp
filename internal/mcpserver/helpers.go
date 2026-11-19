@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"ngodingmcp/internal/runner"
 )
 
 // textResult wraps text as the human-readable part of a tool result. The
@@ -49,6 +51,13 @@ func allowlistDescription(prefix, exact []string) string {
 	}
 	if len(exact) > 0 {
 		desc += "Allowed exact commands (no extra arguments): " + strings.Join(exact, ", ") + ". "
+	}
+	for _, e := range exact {
+		if e == runner.RestartCommand {
+			desc += "`" + runner.RestartCommand + "` (run_command only) restarts this ngodingmcp service about a second after replying, " +
+				"e.g. after `go build -o ngodingmcp .`; tool calls fail for a few seconds, then work again. "
+			break
+		}
 	}
 	return desc
 }

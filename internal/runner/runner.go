@@ -32,8 +32,22 @@ var (
 // go toolchain invoke an alternate program, --exec covers git helpers,
 // --output lets git diff/log overwrite files anywhere the user can write,
 // --no-index lets git diff read files the user can read (e.g. /etc/passwd),
-// and -vettool makes go vet load a custom analysis program.
-var blockedFlags = []string{"-exec", "--exec", "-toolexec", "--toolexec", "--output", "-output", "--no-index", "-vettool", "--vettool"}
+// -vettool makes go vet load a custom analysis program, and staticcheck's
+// -debug.* profiling flags write files to any path.
+var blockedFlags = []string{
+	"-exec", "--exec", "-toolexec", "--toolexec", "--output", "-output", "--no-index", "-vettool", "--vettool",
+	"-debug.cpuprofile", "--debug.cpuprofile", "-debug.memprofile", "--debug.memprofile",
+	"-debug.trace", "--debug.trace", "-debug.measure-analyzers", "--debug.measure-analyzers",
+}
+
+// RestartCommand is the exact command that restarts the ngodingmcp service
+// itself. It is never executed as a program: Run hands it to
+// Options.Restart, which queues the restart so the reply goes out first.
+const RestartCommand = "ngodingmcp restart"
+
+// ErrRestartUnavailable is returned for RestartCommand when the Runner has no
+// Options.Restart hook.
+var ErrRestartUnavailable = errors.New("ngodingmcp restart is not available in this server")
 
 // Options configures a Runner.
 type Options struct {
@@ -50,6 +64,10 @@ type Options struct {
 	Timeout time.Duration
 	// MaxOutputBytes bounds captured output. Zero means DefaultMaxOutputBytes.
 	MaxOutputBytes int
+	// Restart handles RestartCommand when the allowlist admits it: it must
+	// only schedule the restart and return the message for the result. When
+	// nil, RestartCommand fails with ErrRestartUnavailable.
+	Restart func() (string, error)
 }
 
 // Result describes one finished command.
@@ -71,6 +89,7 @@ type Runner struct {
 	exactLabels  []string
 	timeout      time.Duration
 	maxOutput    int
+	restart      func() (string, error)
 }
 
 // New validates the allowlists and builds a Runner.
@@ -103,6 +122,7 @@ func New(opts Options) (*Runner, error) {
 		exactLabels:  exactLabels,
 		timeout:      timeout,
 		maxOutput:    maxOutput,
+		restart:      opts.Restart,
 	}
 	r.root.Store(opts.Root)
 	return r, nil
@@ -162,6 +182,9 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 	if err := r.Check(argv); err != nil {
 		return Result{}, err
 	}
+	if IsRestart(argv) {
+		return r.runRestart(argv)
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -217,6 +240,25 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 		return res, fmt.Errorf("%s: output pipes stayed open past the wait delay (detached children); output may be incomplete", argv[0])
 	}
 	return res, fmt.Errorf("run %s: %w", argv[0], runErr)
+}
+
+// IsRestart reports whether argv is exactly RestartCommand.
+func IsRestart(argv []string) bool {
+	return FormatArgv(argv) == RestartCommand
+}
+
+// runRestart answers RestartCommand through the Restart hook instead of
+// starting a program: the hook queues the restart and returns at once, so
+// this tool result is written before the server stops.
+func (r *Runner) runRestart(argv []string) (Result, error) {
+	if r.restart == nil {
+		return Result{}, ErrRestartUnavailable
+	}
+	msg, err := r.restart()
+	if err != nil {
+		return Result{}, err
+	}
+	return Result{Argv: append([]string(nil), argv...), Output: msg}, nil
 }
 
 // Check reports whether argv is allowed to execute. It applies the same

@@ -561,3 +561,18 @@ func waitExit(t *testing.T, m *Manager, name string) {
 	}
 	t.Fatalf("%s did not exit", name)
 }
+
+func TestStartRefusesRestartCommand(t *testing.T) {
+	root := t.TempDir()
+	r, err := runner.New(runner.Options{Root: root, ExactAllowlist: []string{runner.RestartCommand}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := New(Options{Root: root, Runner: r})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.StartWithOptions(StartOptions{Argv: []string{"ngodingmcp", "restart"}}); err == nil || !strings.Contains(err.Error(), "run_command") {
+		t.Fatalf("err = %v, want a pointer to run_command", err)
+	}
+}

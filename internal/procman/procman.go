@@ -192,6 +192,9 @@ func (m *Manager) StartWithOptions(opts StartOptions) (Info, error) {
 	if err := m.run.Check(opts.Argv); err != nil {
 		return Info{}, err
 	}
+	if runner.IsRestart(opts.Argv) {
+		return Info{}, fmt.Errorf("%s restarts this server; call it with run_command, not start_process", runner.RestartCommand)
+	}
 	name := strings.TrimSpace(opts.Name)
 	if name != "" && !nameRE.MatchString(name) {
 		return Info{}, fmt.Errorf("invalid process name %q (use letters, digits, _ or -)", opts.Name)

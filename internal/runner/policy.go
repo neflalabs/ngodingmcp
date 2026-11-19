@@ -5,13 +5,15 @@ package runner
 // code (not in the workspace) so an agent cannot widen its own permissions.
 //
 // Prefix entries accept additional arguments; exact entries must match argv
-// character for character.
+// character for character. "ngodingmcp restart" (RestartCommand) is not run
+// as a program; see Runner.Run and internal/selfrestart.
 var (
 	DefaultPrefixes = []string{
 		"go build",
 		"go test",
 		"go vet",
 		"gofmt -l",
+		"staticcheck",
 		"git status",
 		"git diff",
 		"git log",
@@ -21,6 +23,7 @@ var (
 		"bun test",
 		"bun run build",
 		"bun run dev",
+		RestartCommand,
 	}
 )
 
