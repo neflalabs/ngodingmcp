@@ -21,28 +21,21 @@ type runCommandArgs struct {
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"optional timeout in seconds, capped by the server maximum"`
 }
 
-type runCommandOut struct {
-	Command    string   `json:"command"`
-	Argv       []string `json:"argv"`
-	ExitCode   int      `json:"exitCode"`
-	Output     string   `json:"output"`
-	Truncated  bool     `json:"truncated"`
-	TimedOut   bool     `json:"timedOut"`
-	DurationMS int64    `json:"durationMs"`
-}
-
 func addRunCommand(s *mcp.Server, run *runner.Runner) {
 	desc := "Run an allowlisted command inside the workspace root without a shell. " +
 		allowlistDescription(run.Allowlist(), run.ExactAllowlist()) +
 		"Non-zero exit codes are reported in the result."
-	mcp.AddTool(s, &mcp.Tool{
+	// The transcript in the text content is the whole result; a structured
+	// copy would repeat the command output. The exit status also goes into
+	// _meta so the activity log can flag a failing command.
+	addTextTool(s, &mcp.Tool{
 		Name:        "run_command",
 		Description: desc,
 		Annotations: destructive(),
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runCommandArgs) (*mcp.CallToolResult, runCommandOut, error) {
+	}, func(ctx context.Context, _ *mcp.CallToolRequest, in runCommandArgs) (*mcp.CallToolResult, any, error) {
 		argv := append(strings.Fields(in.Command), in.Args...)
 		if len(argv) == 0 {
-			return nil, runCommandOut{}, runner.ErrEmptyCommand
+			return nil, nil, runner.ErrEmptyCommand
 		}
 
 		if in.TimeoutSeconds > 0 {
@@ -54,19 +47,28 @@ func addRunCommand(s *mcp.Server, run *runner.Runner) {
 
 		res, err := run.Run(ctx, argv)
 		if err != nil {
-			return nil, runCommandOut{}, err
+			return nil, nil, err
 		}
-		out := runCommandOut{
-			Command:    in.Command,
-			Argv:       res.Argv,
-			ExitCode:   res.ExitCode,
-			Output:     res.Output,
-			Truncated:  res.Truncated,
-			TimedOut:   res.TimedOut,
-			DurationMS: res.DurationMS,
-		}
-		return textResult(formatRunResult(res, run.Timeout())), out, nil
+		result := textResult(formatRunResult(res, run.Timeout()))
+		result.Meta = runMeta(res)
+		return result, nil, nil
 	})
+}
+
+// _meta keys for a run_command result. They are namespaced as the MCP spec
+// asks for implementation-specific _meta entries; clients do not show _meta
+// to the model.
+const (
+	metaExitCode = "ngodingmcp/exitCode"
+	metaTimedOut = "ngodingmcp/timedOut"
+)
+
+// runMeta reports the exit status of a finished command in _meta.
+func runMeta(res runner.Result) mcp.Meta {
+	return mcp.Meta{
+		metaExitCode: res.ExitCode,
+		metaTimedOut: res.TimedOut,
+	}
 }
 
 // formatRunResult renders a finished command as a terminal-style transcript.

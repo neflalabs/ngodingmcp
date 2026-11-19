@@ -38,7 +38,7 @@ type replaceTextOut struct {
 }
 
 func addReplaceText(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_text",
 		Description: "Replace an exact substring in a file. By default the old text must occur exactly once; set replace_all to replace every occurrence.",
 		Annotations: destructive(),
@@ -65,7 +65,7 @@ type editFileOut struct {
 }
 
 func addEditFile(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name: "edit_file",
 		Description: "Apply several exact-text replacements to one file in a single atomic step and return a unified diff. " +
 			"Edits run in order and each sees the previous result. If any edit fails (old text missing or not unique), nothing is written. " +
@@ -106,7 +106,7 @@ type insertTextOut struct {
 }
 
 func addInsertText(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "insert_text",
 		Description: "Insert text before a 1-based line number. Use line = total_lines + 1 to append at the end.",
 		Annotations: additive(),
@@ -134,7 +134,7 @@ type deleteLinesOut struct {
 }
 
 func addDeleteLines(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "delete_lines",
 		Description: "Delete an inclusive range of 1-based lines from a file.",
 		Annotations: destructive(),
@@ -163,7 +163,7 @@ type replaceLinesOut struct {
 }
 
 func addReplaceLines(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_lines",
 		Description: "Replace an inclusive range of 1-based lines with new content. Equivalent to delete_lines + insert_text in one atomic operation.",
 		Annotations: destructive(),

@@ -38,7 +38,7 @@ func addDownloadFile(s *mcp.Server, ws *workspace.Workspace, dl *fetch.Client) {
 	annotations := destructive()
 	annotations.OpenWorldHint = boolPtr(true)
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "download_file",
 		Description: "Download a file (text or binary, e.g. images) from an https URL and save it in the workspace. " +
 			"Use this for binary files that write_file cannot create. " +

@@ -59,7 +59,7 @@ type gitLogArgs struct {
 }
 
 func addGitReadTools(s *mcp.Server, g *gitread.Git) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "git_status",
 		Description: "Show `git status --short --branch` for the workspace. Read-only; sensitive files are hidden.",
 		Annotations: readOnly(),
@@ -68,7 +68,7 @@ func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 		return gitResult(res, err, "(clean)")
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "git_diff",
 		Description: "Show `git diff` for the workspace or one path, optionally staged, as a summary (stat), or against a ref. Read-only; external diff and textconv programs never run, and sensitive files are excluded.",
 		Annotations: readOnly(),
@@ -77,7 +77,7 @@ func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 		return gitResult(res, err, "(no differences)")
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "git_log",
 		Description: "Show recent commits, one line each (hash, date, author, subject), for the workspace or one path. Read-only.",
 		Annotations: readOnly(),
@@ -162,7 +162,7 @@ func gitMessageResult(msg string, err error) (*mcp.CallToolResult, gitWriteOut, 
 }
 
 func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_init",
 		Description: "Create a git repository at the workspace root (initial branch main unless given). Refuses when the workspace already is a repository.",
 		Annotations: additive(),
@@ -170,7 +170,7 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 		return gitMessageResult(g.Init(ctx, in.Branch))
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_add",
 		Description: "Stage new, modified and deleted files under the given paths, or the whole workspace with all=true. " +
 			"Ignored files are never staged (no force option) and sensitive files such as .env or private keys are skipped and listed.",
@@ -198,7 +198,7 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(b.String()), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_unstage",
 		Description: "Remove paths (or everything with all=true) from the staging area. The files in the workspace are not changed.",
 		Annotations: additiveIdempotent(),
@@ -206,7 +206,7 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 		return gitMessageResult("unstaged; workspace files unchanged", g.Unstage(ctx, in.Paths, in.All))
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_commit",
 		Description: "Commit the staged changes with the given message. Never amends, never runs repository hooks and never signs. " +
 			"Refuses when nothing is staged or when a sensitive file is staged. Check git_diff with staged=true first.",
@@ -224,7 +224,7 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(text), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_create_branch",
 		Description: "Create a new local branch at HEAD or at start, optionally switching to it. Existing branches are never overwritten.",
 		Annotations: additive(),
@@ -232,7 +232,7 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 		return gitMessageResult(g.CreateBranch(ctx, in.Name, in.Start, in.Switch))
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_switch_branch",
 		Description: "Switch the workspace to an existing local branch. Git refuses when uncommitted changes would be overwritten; " +
 			"there is no force option, so no work is lost. Non-conflicting uncommitted changes are carried over.",

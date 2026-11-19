@@ -43,7 +43,7 @@ type readFileOut struct {
 }
 
 func addReadFile(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "read_file",
 		Description: "Read a text file. Returns numbered lines plus the raw content of the requested slice.",
 		Annotations: readOnly(),
@@ -71,7 +71,7 @@ type writeFileOut struct {
 }
 
 func addWriteFile(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "write_file",
 		Description: "Create or overwrite a file with the given content. Parent directories are created automatically. Writes are atomic.",
 		Annotations: destructive(),
@@ -99,7 +99,7 @@ type listFilesOut struct {
 }
 
 func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "list_files",
 		Description: "List files and directories inside the workspace, one level or recursively. Recursive listings are capped at 2000 entries and dependency/build-cache directories are skipped; pass one as path to list it.",
 		Annotations: readOnly(),
@@ -163,7 +163,7 @@ type mkdirPathOut struct {
 }
 
 func addMkdirPath(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "mkdir_path",
 		Description: "Create a directory (and any necessary parent directories) inside the workspace.",
 		Annotations: additive(),
@@ -188,7 +188,7 @@ type movePathOut struct {
 }
 
 func addMovePath(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "move_path",
 		Description: "Move or rename a file or directory within the workspace.",
 		Annotations: destructive(),
@@ -213,7 +213,7 @@ type deletePathOut struct {
 }
 
 func addDeletePath(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "delete_path",
 		Description: "Delete a file or directory inside the workspace. Use recursive=true to remove non-empty directories. Refuses to delete workspace root.",
 		Annotations: destructive(),

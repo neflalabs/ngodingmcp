@@ -51,7 +51,7 @@ func addStartProcess(s *mcp.Server, mgr *procman.Manager) {
 		"Commands never go through a shell. "
 	prefix, exact := mgr.Allowlist()
 	desc += allowlistDescription(prefix, exact)
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "start_process",
 		Description: desc,
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in startProcessArgs) (*mcp.CallToolResult, startProcessOut, error) {
@@ -139,7 +139,7 @@ type processLogsOut struct {
 }
 
 func addProcessLogs(s *mcp.Server, mgr *procman.Manager) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "process_logs",
 		Description: "Read process stdout/stderr. Use after_seq with nextSeq from the previous response to fetch only new lines; omit it for the last tail_lines. Output is bounded by a per-process ring buffer.",
 		Annotations: readOnly(),
@@ -185,7 +185,7 @@ type stopProcessOut struct {
 }
 
 func addStopProcess(s *mcp.Server, mgr *procman.Manager) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "stop_process",
 		Description: "Stop a background process and its children. Sends SIGTERM first and escalates to SIGKILL after the grace period. Set wait=false to return immediately.",
 		Annotations: destructive(),
@@ -211,7 +211,7 @@ type restartProcessOut struct {
 }
 
 func addRestartProcess(s *mcp.Server, mgr *procman.Manager) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "restart_process",
 		Description: "Stop a background process and start it again with the same command, working directory and environment.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in restartProcessArgs) (*mcp.CallToolResult, restartProcessOut, error) {
@@ -234,7 +234,7 @@ type stopAllProcessesOut struct {
 }
 
 func addStopAllProcesses(s *mcp.Server, mgr *procman.Manager) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "stop_all_processes",
 		Description: "Stop every running background process. Useful for resetting workspace state before starting again.",
 		Annotations: destructive(),

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"ngodingmcp/internal/runner"
 )
 
 func TestActivityOutcome(t *testing.T) {
@@ -20,10 +22,12 @@ func TestActivityOutcome(t *testing.T) {
 		{"protocol error", nil, errors.New("boom"), false, "error"},
 		{"tool error", &mcp.CallToolResult{IsError: true}, nil, false, "error"},
 		{"plain ok", &mcp.CallToolResult{}, nil, true, ""},
-		{"command exit 1", &mcp.CallToolResult{StructuredContent: map[string]any{"command": "go test", "argv": []string{"go", "test"}, "exitCode": 1}}, nil, false, "exit 1"},
-		{"command exit 0", &mcp.CallToolResult{StructuredContent: map[string]any{"command": "go test", "argv": []string{"go", "test"}, "exitCode": 0}}, nil, true, ""},
-		{"command timeout", &mcp.CallToolResult{StructuredContent: map[string]any{"command": "go test", "argv": []string{"go", "test"}, "timedOut": true}}, nil, false, "timed out"},
+		{"command exit 1", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: 1})}, nil, false, "exit 1"},
+		{"command exit 0", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: 0})}, nil, true, ""},
+		{"command timeout", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: -1, TimedOut: true})}, nil, false, "timed out"},
+		{"command exit after JSON round trip", &mcp.CallToolResult{Meta: mcp.Meta{metaExitCode: float64(2)}}, nil, false, "exit 2"},
 		{"stopped process info with old exit", &mcp.CallToolResult{StructuredContent: map[string]any{"name": "dev", "argv": []string{"bun", "run", "dev"}, "exitCode": 2, "pid": 42}}, nil, true, ""},
+		{"unrelated meta", &mcp.CallToolResult{Meta: mcp.Meta{"progressToken": "x"}}, nil, true, ""},
 	}
 	for _, c := range cases {
 		ok, detail := activityOutcome(c.res, c.err)

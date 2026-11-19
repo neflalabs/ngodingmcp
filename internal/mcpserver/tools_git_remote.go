@@ -94,7 +94,7 @@ func network(a *mcp.ToolAnnotations) *mcp.ToolAnnotations {
 }
 
 func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_remote",
 		Description: "List, add, change (set_url) or remove git remotes. Only https and ssh URLs are accepted; local paths, file://, git://, http:// and ext:: are refused, " +
 			"and https URLs may not contain a username or token (credentials come from the user's git credential helper or ssh key). " +
@@ -134,7 +134,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		}
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_fetch",
 		Description: "Download new commits and branches from a remote into remote-tracking branches (origin/main etc.). " +
 			"Local branches and workspace files are not changed. Never prompts for a password; see the hint in an auth error.",
@@ -150,7 +150,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(fmt.Sprintf("fetched %s:\n  %s", res.Remote, strings.Join(res.Updates, "\n  "))), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_pull",
 		Description: "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed " +
 			"and the error says to use git_merge with the remote branch. No rebase. Refuses when uncommitted changes would be overwritten.",
@@ -179,7 +179,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(text), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_push",
 		Description: "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; " +
 			"a rejected non-fast-forward push is reported (pull or merge first). Use set_upstream=true on a branch's first push. Never prompts for a password.",
@@ -199,7 +199,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(text), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_merge",
 		Description: "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). " +
 			"On a conflict the merge is aborted automatically, the branch is left unchanged and the conflicting files are listed. Never runs hooks.",
@@ -227,7 +227,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(text), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_github_create_repo",
 		Description: "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin " +
 			"(or the given remote). Nothing is pushed: call git_push with set_upstream=true next. Needs gh installed and logged in (`gh auth login`); never prompts.",
@@ -244,7 +244,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(text), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name: "git_github_runs",
 		Description: "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). " +
 			"Filter optionally by workflow (e.g. ci.yml), branch, or status/conclusion. Read-only; never prompts.",
@@ -271,7 +271,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(b.String()), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name: "git_github_run_view",
 		Description: "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). " +
 			"Omit run_id (or pass 0) to inspect the latest run. Read-only; never prompts.",
@@ -315,7 +315,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 		return textResult(b.String()), res, nil
 	})
 
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name: "git_github_run_rerun",
 		Description: "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). " +
 			"Requires write access to the repository; never prompts.",

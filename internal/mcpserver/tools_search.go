@@ -40,7 +40,7 @@ type searchTextOut struct {
 }
 
 func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "search_text",
 		Description: "Search file contents with a regular expression and return matching paths with line numbers. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to search inside it.",
 		Annotations: readOnly(),
@@ -82,7 +82,7 @@ type searchReplaceOut struct {
 }
 
 func addSearchAndReplace(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addUntypedTool(s, &mcp.Tool{
 		Name:        "search_and_replace",
 		Description: "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to replace inside it.",
 		Annotations: destructive(),

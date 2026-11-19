@@ -99,18 +99,18 @@ func activityOutcome(res mcp.Result, err error) (bool, string) {
 		return false, "error"
 	}
 	// run_command reports a failing command as a normal result with a
-	// non-zero exit code; surface that as a failure.
-	if r.StructuredContent != nil {
-		if raw, mErr := json.Marshal(r.StructuredContent); mErr == nil {
+	// non-zero exit code in _meta (see runMeta); surface that as a failure.
+	if len(r.Meta) > 0 {
+		if raw, mErr := json.Marshal(r.Meta); mErr == nil {
 			var st struct {
-				ExitCode *int `json:"exitCode"`
-				TimedOut bool `json:"timedOut"`
+				ExitCode *int `json:"ngodingmcp/exitCode"`
+				TimedOut bool `json:"ngodingmcp/timedOut"`
 			}
 			if json.Unmarshal(raw, &st) == nil {
 				switch {
 				case st.TimedOut:
 					return false, "timed out"
-				case st.ExitCode != nil && *st.ExitCode != 0 && hasCommand(raw):
+				case st.ExitCode != nil && *st.ExitCode != 0:
 					return false, fmt.Sprintf("exit %d", *st.ExitCode)
 				}
 			}
@@ -175,16 +175,6 @@ func humanCount(n int64) string {
 	default:
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
 	}
-}
-
-// hasCommand limits the exit-code rule to run_command results (they carry
-// "command"), so process info from stop_process or list_processes, which
-// also has argv and an old exitCode, is not reported as a failed call.
-func hasCommand(raw []byte) bool {
-	var st struct {
-		Command string `json:"command"`
-	}
-	return json.Unmarshal(raw, &st) == nil && st.Command != ""
 }
 
 // activityTarget extracts the main target from the call arguments. Only

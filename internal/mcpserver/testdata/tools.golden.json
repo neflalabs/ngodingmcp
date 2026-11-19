@@ -103,23 +103,7 @@
       ],
       "type": "object"
     },
-    "name": "delete_lines",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string"
-        },
-        "totalLines": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path",
-        "totalLines"
-      ],
-      "type": "object"
-    }
+    "name": "delete_lines"
   },
   {
     "annotations": {
@@ -145,19 +129,7 @@
       ],
       "type": "object"
     },
-    "name": "delete_path",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "type": "object"
-    }
+    "name": "delete_path"
   },
   {
     "annotations": {
@@ -193,34 +165,7 @@
       ],
       "type": "object"
     },
-    "name": "download_file",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "bytes": {
-          "type": "integer"
-        },
-        "contentType": {
-          "type": "string"
-        },
-        "host": {
-          "type": "string"
-        },
-        "path": {
-          "type": "string"
-        },
-        "sha256": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path",
-        "bytes",
-        "sha256",
-        "host"
-      ],
-      "type": "object"
-    }
+    "name": "download_file"
   },
   {
     "annotations": {
@@ -273,39 +218,7 @@
       ],
       "type": "object"
     },
-    "name": "edit_file",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "diff": {
-          "type": "string"
-        },
-        "dryRun": {
-          "type": "boolean"
-        },
-        "edits": {
-          "type": "integer"
-        },
-        "path": {
-          "type": "string"
-        },
-        "replacements": {
-          "type": "integer"
-        },
-        "totalLines": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path",
-        "edits",
-        "replacements",
-        "dryRun",
-        "diff",
-        "totalLines"
-      ],
-      "type": "object"
-    }
+    "name": "edit_file"
   },
   {
     "annotations": {
@@ -383,34 +296,7 @@
       },
       "type": "object"
     },
-    "name": "git_add",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "skippedSensitive": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "staged": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "staged"
-      ],
-      "type": "object"
-    }
+    "name": "git_add"
   },
   {
     "annotations": {
@@ -440,37 +326,7 @@
       ],
       "type": "object"
     },
-    "name": "git_commit",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "branch": {
-          "type": "string"
-        },
-        "files": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "hash": {
-          "type": "string"
-        },
-        "subject": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "hash",
-        "branch",
-        "subject",
-        "files"
-      ],
-      "type": "object"
-    }
+    "name": "git_commit"
   },
   {
     "annotations": {
@@ -500,19 +356,7 @@
       ],
       "type": "object"
     },
-    "name": "git_create_branch",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_create_branch"
   },
   {
     "annotations": {
@@ -542,27 +386,7 @@
       },
       "type": "object"
     },
-    "name": "git_diff",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "output": {
-          "type": "string"
-        },
-        "repository": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "repository",
-        "output",
-        "truncated"
-      ],
-      "type": "object"
-    }
+    "name": "git_diff"
   },
   {
     "annotations": {
@@ -586,32 +410,7 @@
       },
       "type": "object"
     },
-    "name": "git_fetch",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "remote": {
-          "type": "string"
-        },
-        "up_to_date": {
-          "type": "boolean"
-        },
-        "updates": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "remote",
-        "up_to_date"
-      ],
-      "type": "object"
-    }
+    "name": "git_fetch"
   },
   {
     "annotations": {
@@ -654,36 +453,7 @@
       ],
       "type": "object"
     },
-    "name": "git_github_create_repo",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "note": {
-          "type": "string"
-        },
-        "remote": {
-          "type": "string"
-        },
-        "remote_added": {
-          "type": "boolean"
-        },
-        "remote_url": {
-          "type": "string"
-        },
-        "url": {
-          "type": "string"
-        },
-        "visibility": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "url",
-        "visibility",
-        "remote_added"
-      ],
-      "type": "object"
-    }
+    "name": "git_github_create_repo"
   },
   {
     "annotations": {
@@ -710,19 +480,7 @@
       ],
       "type": "object"
     },
-    "name": "git_github_run_rerun",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_github_run_rerun"
   },
   {
     "annotations": {
@@ -753,132 +511,7 @@
       },
       "type": "object"
     },
-    "name": "git_github_run_view",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "conclusion": {
-          "type": "string"
-        },
-        "created_at": {
-          "type": "string"
-        },
-        "database_id": {
-          "type": "integer"
-        },
-        "display_title": {
-          "type": "string"
-        },
-        "event": {
-          "type": "string"
-        },
-        "failed_logs": {
-          "type": "string"
-        },
-        "head_branch": {
-          "type": "string"
-        },
-        "head_sha": {
-          "type": "string"
-        },
-        "jobs": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "completed_at": {
-                "type": "string"
-              },
-              "conclusion": {
-                "type": "string"
-              },
-              "database_id": {
-                "type": "integer"
-              },
-              "name": {
-                "type": "string"
-              },
-              "started_at": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string"
-              },
-              "steps": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "conclusion": {
-                      "type": "string"
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "number": {
-                      "type": "integer"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "number",
-                    "name",
-                    "status"
-                  ],
-                  "type": "object"
-                },
-                "type": [
-                  "null",
-                  "array"
-                ]
-              }
-            },
-            "required": [
-              "database_id",
-              "name",
-              "status"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "logs_truncated": {
-          "type": "boolean"
-        },
-        "number": {
-          "type": "integer"
-        },
-        "status": {
-          "type": "string"
-        },
-        "updated_at": {
-          "type": "string"
-        },
-        "url": {
-          "type": "string"
-        },
-        "workflow_name": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "database_id",
-        "number",
-        "workflow_name",
-        "display_title",
-        "event",
-        "head_branch",
-        "head_sha",
-        "status",
-        "url",
-        "created_at",
-        "updated_at"
-      ],
-      "type": "object"
-    }
+    "name": "git_github_run_view"
   },
   {
     "annotations": {
@@ -909,77 +542,7 @@
       },
       "type": "object"
     },
-    "name": "git_github_runs",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "runs": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "conclusion": {
-                "type": "string"
-              },
-              "created_at": {
-                "type": "string"
-              },
-              "database_id": {
-                "type": "integer"
-              },
-              "display_title": {
-                "type": "string"
-              },
-              "event": {
-                "type": "string"
-              },
-              "head_branch": {
-                "type": "string"
-              },
-              "head_sha": {
-                "type": "string"
-              },
-              "number": {
-                "type": "integer"
-              },
-              "status": {
-                "type": "string"
-              },
-              "updated_at": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              },
-              "workflow_name": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "database_id",
-              "number",
-              "workflow_name",
-              "display_title",
-              "event",
-              "head_branch",
-              "head_sha",
-              "status",
-              "url",
-              "created_at",
-              "updated_at"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "runs"
-      ],
-      "type": "object"
-    }
+    "name": "git_github_runs"
   },
   {
     "annotations": {
@@ -998,19 +561,7 @@
       },
       "type": "object"
     },
-    "name": "git_init",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_init"
   },
   {
     "annotations": {
@@ -1032,27 +583,7 @@
       },
       "type": "object"
     },
-    "name": "git_log",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "output": {
-          "type": "string"
-        },
-        "repository": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "repository",
-        "output",
-        "truncated"
-      ],
-      "type": "object"
-    }
+    "name": "git_log"
   },
   {
     "annotations": {
@@ -1082,39 +613,7 @@
       ],
       "type": "object"
     },
-    "name": "git_merge",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "branch": {
-          "type": "string"
-        },
-        "fast_forward": {
-          "type": "boolean"
-        },
-        "from": {
-          "type": "string"
-        },
-        "ref": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        },
-        "up_to_date": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "branch",
-        "ref",
-        "up_to_date"
-      ],
-      "type": "object"
-    }
+    "name": "git_merge"
   },
   {
     "annotations": {
@@ -1138,55 +637,7 @@
       },
       "type": "object"
     },
-    "name": "git_pull",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "ahead": {
-          "type": "integer"
-        },
-        "branch": {
-          "type": "string"
-        },
-        "commits": {
-          "type": "integer"
-        },
-        "fetched": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "from": {
-          "type": "string"
-        },
-        "remote": {
-          "type": "string"
-        },
-        "remote_branch": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        },
-        "up_to_date": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "branch",
-        "remote",
-        "remote_branch",
-        "up_to_date"
-      ],
-      "type": "object"
-    }
+    "name": "git_pull"
   },
   {
     "annotations": {
@@ -1218,37 +669,7 @@
       },
       "type": "object"
     },
-    "name": "git_push",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "branch": {
-          "type": "string"
-        },
-        "remote": {
-          "type": "string"
-        },
-        "remote_branch": {
-          "type": "string"
-        },
-        "status": {
-          "type": "string"
-        },
-        "summary": {
-          "type": "string"
-        },
-        "upstream_set": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "remote",
-        "branch",
-        "remote_branch",
-        "status"
-      ],
-      "type": "object"
-    }
+    "name": "git_push"
   },
   {
     "annotations": {
@@ -1275,44 +696,7 @@
       },
       "type": "object"
     },
-    "name": "git_remote",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        },
-        "remotes": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "fetch_url": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "push_url": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "name",
-              "fetch_url"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_remote"
   },
   {
     "annotations": {
@@ -1324,27 +708,7 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "name": "git_status",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "output": {
-          "type": "string"
-        },
-        "repository": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "repository",
-        "output",
-        "truncated"
-      ],
-      "type": "object"
-    }
+    "name": "git_status"
   },
   {
     "annotations": {
@@ -1366,19 +730,7 @@
       ],
       "type": "object"
     },
-    "name": "git_switch_branch",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_switch_branch"
   },
   {
     "annotations": {
@@ -1407,19 +759,7 @@
       },
       "type": "object"
     },
-    "name": "git_unstage",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "message": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "message"
-      ],
-      "type": "object"
-    }
+    "name": "git_unstage"
   },
   {
     "annotations": {
@@ -1451,23 +791,7 @@
       ],
       "type": "object"
     },
-    "name": "insert_text",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "line": {
-          "type": "integer"
-        },
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path",
-        "line"
-      ],
-      "type": "object"
-    }
+    "name": "insert_text"
   },
   {
     "annotations": {
@@ -1489,53 +813,7 @@
       },
       "type": "object"
     },
-    "name": "list_files",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "entries": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "isDir": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              },
-              "size": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "name",
-              "path",
-              "isDir",
-              "size"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "path": {
-          "type": "string"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "path",
-        "entries"
-      ],
-      "type": "object"
-    }
+    "name": "list_files"
   },
   {
     "annotations": {
@@ -1651,19 +929,7 @@
       ],
       "type": "object"
     },
-    "name": "mkdir_path",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "type": "object"
-    }
+    "name": "mkdir_path"
   },
   {
     "annotations": {
@@ -1690,19 +956,7 @@
       ],
       "type": "object"
     },
-    "name": "move_path",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path"
-      ],
-      "type": "object"
-    }
+    "name": "move_path"
   },
   {
     "annotations": {
@@ -1738,117 +992,7 @@
       ],
       "type": "object"
     },
-    "name": "process_logs",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "argv": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "dir": {
-          "type": "string"
-        },
-        "dropped": {
-          "type": "boolean"
-        },
-        "durationMs": {
-          "type": "integer"
-        },
-        "endedAt": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "exitCode": {
-          "type": "integer"
-        },
-        "lines": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "seq": {
-                "type": "integer"
-              },
-              "text": {
-                "type": "string"
-              },
-              "time": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "seq",
-              "time",
-              "text"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "logBytes": {
-          "type": "integer"
-        },
-        "logDropped": {
-          "type": "boolean"
-        },
-        "logs": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "nextSeq": {
-          "type": "integer"
-        },
-        "pid": {
-          "type": "integer"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "running": {
-          "type": "boolean"
-        },
-        "startedAt": {
-          "type": "string"
-        },
-        "stopping": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "argv",
-        "pid",
-        "running",
-        "stopping",
-        "ready",
-        "exitCode",
-        "startedAt",
-        "durationMs",
-        "logBytes",
-        "logDropped",
-        "logs",
-        "lines",
-        "nextSeq",
-        "truncated",
-        "dropped"
-      ],
-      "type": "object"
-    }
+    "name": "process_logs"
   },
   {
     "annotations": {
@@ -1877,39 +1021,7 @@
       ],
       "type": "object"
     },
-    "name": "read_file",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "content": {
-          "type": "string"
-        },
-        "endLine": {
-          "type": "integer"
-        },
-        "path": {
-          "type": "string"
-        },
-        "size": {
-          "type": "integer"
-        },
-        "startLine": {
-          "type": "integer"
-        },
-        "totalLines": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path",
-        "content",
-        "startLine",
-        "endLine",
-        "totalLines",
-        "size"
-      ],
-      "type": "object"
-    }
+    "name": "read_file"
   },
   {
     "annotations": {
@@ -1946,23 +1058,7 @@
       ],
       "type": "object"
     },
-    "name": "replace_lines",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "path": {
-          "type": "string"
-        },
-        "totalLines": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "path",
-        "totalLines"
-      ],
-      "type": "object"
-    }
+    "name": "replace_lines"
   },
   {
     "annotations": {
@@ -1998,23 +1094,7 @@
       ],
       "type": "object"
     },
-    "name": "replace_text",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "count": {
-          "type": "integer"
-        },
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path",
-        "count"
-      ],
-      "type": "object"
-    }
+    "name": "replace_text"
   },
   {
     "description": "Stop a background process and start it again with the same command, working directory and environment.",
@@ -2035,74 +1115,7 @@
       ],
       "type": "object"
     },
-    "name": "restart_process",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "argv": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "dir": {
-          "type": "string"
-        },
-        "durationMs": {
-          "type": "integer"
-        },
-        "endedAt": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "exitCode": {
-          "type": "integer"
-        },
-        "logBytes": {
-          "type": "integer"
-        },
-        "logDropped": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        },
-        "pid": {
-          "type": "integer"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "running": {
-          "type": "boolean"
-        },
-        "startedAt": {
-          "type": "string"
-        },
-        "stopping": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "argv",
-        "pid",
-        "running",
-        "stopping",
-        "ready",
-        "exitCode",
-        "startedAt",
-        "durationMs",
-        "logBytes",
-        "logDropped"
-      ],
-      "type": "object"
-    }
+    "name": "restart_process"
   },
   {
     "annotations": {
@@ -2138,49 +1151,7 @@
       ],
       "type": "object"
     },
-    "name": "run_command",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "argv": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "command": {
-          "type": "string"
-        },
-        "durationMs": {
-          "type": "integer"
-        },
-        "exitCode": {
-          "type": "integer"
-        },
-        "output": {
-          "type": "string"
-        },
-        "timedOut": {
-          "type": "boolean"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "command",
-        "argv",
-        "exitCode",
-        "output",
-        "truncated",
-        "timedOut",
-        "durationMs"
-      ],
-      "type": "object"
-    }
+    "name": "run_command"
   },
   {
     "annotations": {
@@ -2223,66 +1194,7 @@
       ],
       "type": "object"
     },
-    "name": "search_and_replace",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "dryRun": {
-          "type": "boolean"
-        },
-        "files": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "changed": {
-                "type": "boolean"
-              },
-              "path": {
-                "type": "string"
-              },
-              "replacements": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "path",
-              "replacements",
-              "changed"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "filesChanged": {
-          "type": "integer"
-        },
-        "pattern": {
-          "type": "string"
-        },
-        "replacement": {
-          "type": "string"
-        },
-        "totalReplacements": {
-          "type": "integer"
-        },
-        "truncated": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "pattern",
-        "replacement",
-        "dryRun",
-        "filesChanged",
-        "totalReplacements",
-        "files",
-        "truncated"
-      ],
-      "type": "object"
-    }
+    "name": "search_and_replace"
   },
   {
     "annotations": {
@@ -2315,42 +1227,7 @@
       ],
       "type": "object"
     },
-    "name": "search_text",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "matches": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "line": {
-                "type": "integer"
-              },
-              "path": {
-                "type": "string"
-              },
-              "text": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "line",
-              "text"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "matches"
-      ],
-      "type": "object"
-    }
+    "name": "search_text"
   },
   {
     "description": "Start an allowlisted command as a long-lived background process inside the workspace root. It keeps running across tool calls, so use process_logs to inspect output and stop_process to end it. Commands never go through a shell. Allowed prefixes: go test, go vet. Allowed exact commands (no extra arguments): bun run dev. ",
@@ -2404,74 +1281,7 @@
       ],
       "type": "object"
     },
-    "name": "start_process",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "argv": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "dir": {
-          "type": "string"
-        },
-        "durationMs": {
-          "type": "integer"
-        },
-        "endedAt": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "exitCode": {
-          "type": "integer"
-        },
-        "logBytes": {
-          "type": "integer"
-        },
-        "logDropped": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        },
-        "pid": {
-          "type": "integer"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "running": {
-          "type": "boolean"
-        },
-        "startedAt": {
-          "type": "string"
-        },
-        "stopping": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "argv",
-        "pid",
-        "running",
-        "stopping",
-        "ready",
-        "exitCode",
-        "startedAt",
-        "durationMs",
-        "logBytes",
-        "logDropped"
-      ],
-      "type": "object"
-    }
+    "name": "start_process"
   },
   {
     "annotations": {
@@ -2490,89 +1300,7 @@
       },
       "type": "object"
     },
-    "name": "stop_all_processes",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "processes": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "argv": {
-                "items": {
-                  "type": "string"
-                },
-                "type": [
-                  "null",
-                  "array"
-                ]
-              },
-              "dir": {
-                "type": "string"
-              },
-              "durationMs": {
-                "type": "integer"
-              },
-              "endedAt": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              },
-              "exitCode": {
-                "type": "integer"
-              },
-              "logBytes": {
-                "type": "integer"
-              },
-              "logDropped": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
-              },
-              "pid": {
-                "type": "integer"
-              },
-              "ready": {
-                "type": "boolean"
-              },
-              "running": {
-                "type": "boolean"
-              },
-              "startedAt": {
-                "type": "string"
-              },
-              "stopping": {
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "name",
-              "argv",
-              "pid",
-              "running",
-              "stopping",
-              "ready",
-              "exitCode",
-              "startedAt",
-              "durationMs",
-              "logBytes",
-              "logDropped"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        }
-      },
-      "required": [
-        "processes"
-      ],
-      "type": "object"
-    }
+    "name": "stop_all_processes"
   },
   {
     "annotations": {
@@ -2605,74 +1333,7 @@
       ],
       "type": "object"
     },
-    "name": "stop_process",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "argv": {
-          "items": {
-            "type": "string"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "dir": {
-          "type": "string"
-        },
-        "durationMs": {
-          "type": "integer"
-        },
-        "endedAt": {
-          "type": "string"
-        },
-        "error": {
-          "type": "string"
-        },
-        "exitCode": {
-          "type": "integer"
-        },
-        "logBytes": {
-          "type": "integer"
-        },
-        "logDropped": {
-          "type": "boolean"
-        },
-        "name": {
-          "type": "string"
-        },
-        "pid": {
-          "type": "integer"
-        },
-        "ready": {
-          "type": "boolean"
-        },
-        "running": {
-          "type": "boolean"
-        },
-        "startedAt": {
-          "type": "string"
-        },
-        "stopping": {
-          "type": "boolean"
-        }
-      },
-      "required": [
-        "name",
-        "argv",
-        "pid",
-        "running",
-        "stopping",
-        "ready",
-        "exitCode",
-        "startedAt",
-        "durationMs",
-        "logBytes",
-        "logDropped"
-      ],
-      "type": "object"
-    }
+    "name": "stop_process"
   },
   {
     "annotations": {
@@ -2755,97 +1416,7 @@
       "additionalProperties": false,
       "type": "object"
     },
-    "name": "workspace_stats",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "byExtension": {
-          "additionalProperties": {
-            "additionalProperties": false,
-            "properties": {
-              "bytes": {
-                "type": "integer"
-              },
-              "files": {
-                "type": "integer"
-              },
-              "lines": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "files",
-              "lines",
-              "bytes"
-            ],
-            "type": "object"
-          },
-          "type": "object"
-        },
-        "largestFiles": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "lines": {
-                "type": "integer"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "lines"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "recentFiles": {
-          "items": {
-            "additionalProperties": false,
-            "properties": {
-              "modTime": {
-                "type": "string"
-              },
-              "path": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "path",
-              "modTime"
-            ],
-            "type": "object"
-          },
-          "type": [
-            "null",
-            "array"
-          ]
-        },
-        "totalBytes": {
-          "type": "integer"
-        },
-        "totalFiles": {
-          "type": "integer"
-        },
-        "totalLines": {
-          "type": "integer"
-        }
-      },
-      "required": [
-        "totalFiles",
-        "totalLines",
-        "totalBytes",
-        "byExtension",
-        "largestFiles",
-        "recentFiles"
-      ],
-      "type": "object"
-    }
+    "name": "workspace_stats"
   },
   {
     "annotations": {
@@ -2872,22 +1443,6 @@
       ],
       "type": "object"
     },
-    "name": "write_file",
-    "outputSchema": {
-      "additionalProperties": false,
-      "properties": {
-        "bytes": {
-          "type": "integer"
-        },
-        "path": {
-          "type": "string"
-        }
-      },
-      "required": [
-        "path",
-        "bytes"
-      ],
-      "type": "object"
-    }
+    "name": "write_file"
   }
 ]

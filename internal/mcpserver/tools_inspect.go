@@ -30,7 +30,7 @@ type workspaceStatsOut struct {
 }
 
 func addWorkspaceStats(s *mcp.Server, ws *workspace.Workspace) {
-	mcp.AddTool(s, &mcp.Tool{
+	addTextTool(s, &mcp.Tool{
 		Name:        "workspace_stats",
 		Description: "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped.",
 		Annotations: readOnly(),
