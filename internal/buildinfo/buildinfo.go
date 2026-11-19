@@ -2,18 +2,18 @@
 //
 // The version string has the form:
 //
-//	v2026.11.12+4deb6fa         clean build of commit 4deb6fa
-//	v2026.11.12+4deb6fa.dirty   built with uncommitted changes
-//	v2026.11.12+dev             no git information (go run, go test, source copy)
+//	v2026.11.3+4deb6fa            release build (tag or VERSION) of commit 4deb6fa
+//	v2026.11.19-dev+4deb6fa       development build of a commit made on 2026-11-19 (UTC)
+//	v2026.11.19-dev+4deb6fa.dirty the same, built with uncommitted changes
+//	v0.0.0+dev                    no git information (go run, go test, source copy)
 //
-// The CalVer part (variable version below) is bumped by hand when a release
-// is cut. The commit part comes from the VCS stamp that
+// Nothing is bumped by hand. The CalVer part comes from the variable version
+// below when it is set at link time (`make build` on an exact v20* tag, or
+// `make release VERSION=v2026.12.0`); otherwise it is derived from the commit
+// date as v<YYYY.MM.DD>-dev. The commit part comes from the VCS stamp that
 // `go build` embeds automatically inside a git checkout, so a plain
-// `go build -o ngodingmcp .` is enough. `make build` without an exact git
-// tag or an explicit VERSION injects a development stamp (v<date>-dev)
-// derived from today's date, so builds never share a stale CalVer line;
-// `make release VERSION=v2026.12.0` overrides it. Any part can be
-// overridden at link time:
+// `go build -o ngodingmcp .` and `make build` give the same version. Any part
+// can be overridden at link time:
 //
 //	go build -ldflags "-X ngodingmcp/internal/buildinfo.version=v2026.12.0"
 //
@@ -35,8 +35,8 @@ import (
 
 // Link-time overrides (-ldflags "-X ngodingmcp/internal/buildinfo.<name>=<value>").
 var (
-	// version is the CalVer release line.
-	version = "v2026.11.13"
+	// version is the CalVer release line; empty means "derive it from the commit date".
+	version = ""
 	// commit overrides the VCS revision, for builds outside a git checkout.
 	commit = ""
 	// modified overrides the VCS dirty flag ("true"/"false"); used together with commit.
@@ -50,7 +50,7 @@ const timeLayout = "2006-01-02 15:04 MST"
 
 // Info describes the running binary.
 type Info struct {
-	Base       string    // CalVer release line, e.g. v2026.11.12
+	Base       string    // CalVer line, e.g. v2026.11.3 or v2026.11.19-dev
 	Commit     string    // short commit hash; empty when unknown
 	Dirty      bool      // built with uncommitted changes
 	CommitTime time.Time // zero when unknown
@@ -84,12 +84,8 @@ type overrides struct {
 // exeTime is the fallback for the build time and may be nil.
 func resolve(o overrides, settings map[string]string, exeTime func() time.Time) Info {
 	info := Info{
-		Base:      strings.TrimSpace(o.version),
 		GoVersion: runtime.Version(),
 		Platform:  runtime.GOOS + "/" + runtime.GOARCH,
-	}
-	if info.Base == "" {
-		info.Base = "v0.0.0"
 	}
 
 	if c := strings.TrimSpace(o.commit); c != "" {
@@ -103,12 +99,27 @@ func resolve(o overrides, settings map[string]string, exeTime func() time.Time) 
 		}
 	}
 
+	info.Base = strings.TrimSpace(o.version)
+	if info.Base == "" {
+		info.Base = devVersion(info.CommitTime)
+	}
+
 	if t, err := time.Parse(time.RFC3339, strings.TrimSpace(o.buildTime)); err == nil {
 		info.BuildTime = t
 	} else if exeTime != nil {
 		info.BuildTime = exeTime()
 	}
 	return info
+}
+
+// devVersion is the CalVer line of a build without a release version:
+// v<YYYY.MM.DD>-dev from the commit date in UTC, or v0.0.0 when the commit
+// date is unknown.
+func devVersion(commitTime time.Time) string {
+	if commitTime.IsZero() {
+		return "v0.0.0"
+	}
+	return "v" + commitTime.UTC().Format("2006.01.02") + "-dev"
 }
 
 // shortHash keeps the first 7 characters of a commit hash, like `git log --oneline`.

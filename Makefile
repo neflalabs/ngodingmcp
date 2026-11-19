@@ -1,19 +1,14 @@
 BINARY := ngodingmcp
 PKG := ngodingmcp/internal/buildinfo
 
-# The version comes from internal/buildinfo (CalVer line + git commit, which
-# go build embeds automatically). Release flow:
-#   make release VERSION=v2026.12.0
-# or `git tag v2026.12.0` at the release commit, then `make build`. Without
-# either, every build stamps a development version derived from today's date
-# (v<YYYY.MM.DD>-dev), so builds never silently share a stale CalVer line.
-# Override with `make release VERSION=...` or by exporting VERSION.
+# The version comes from internal/buildinfo: <CalVer>+<commit>[.dirty].
+# The commit is embedded by go build itself. The CalVer line is
+#   - the exact v20* git tag on HEAD, if there is one;
+#   - VERSION when given: make release VERSION=v2026.12.0;
+#   - otherwise v<commit date>-dev, worked out by buildinfo, so `make build`
+#     and a plain `go build -o ngodingmcp .` print the same version.
 GIT_TAG := $(shell git describe --tags --match 'v20*' --exact-match 2>/dev/null)
-ifeq ($(strip $(GIT_TAG)),)
-VERSION ?= v$(shell date -u +%Y.%m.%d)-dev
-else
 VERSION ?= $(GIT_TAG)
-endif
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 
 LDFLAGS := -s -w -X $(PKG).buildTime=$(BUILD_TIME)
@@ -22,7 +17,13 @@ LDFLAGS += -X $(PKG).version=$(VERSION)
 endif
 GOFLAGS := -trimpath
 
-.PHONY: build release clean test version
+# Pinned here and in .github/workflows/ci.yml; keep both in step.
+STATICCHECK_VERSION := v0.8.2
+
+# `ngodingmcp -d` writes this unit with ExecStart="<absolute binary path>" serve.
+UNIT_FILE := $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/systemd/user/ngodingmcp.service
+
+.PHONY: build release clean test check version
 
 # Static, self-contained binary (no libc dependency).
 build:
@@ -45,5 +46,19 @@ version: build
 test:
 	go test ./...
 
+# The same checks as CI: gofmt, vet, staticcheck and the race-enabled tests.
+check:
+	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then echo "not gofmt-clean:"; echo "$$out"; exit 1; fi
+	go vet ./...
+	go run honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION) ./...
+	go test -count=1 -race ./...
+
+# Removes dist/ and ./ngodingmcp, but keeps the binary while the systemd user
+# service runs it, so `make clean` cannot break `ngodingmcp -d`.
 clean:
-	rm -rf dist $(BINARY)
+	rm -rf dist
+	@if grep -qsF 'ExecStart="$(CURDIR)/$(BINARY)"' "$(UNIT_FILE)"; then \
+		echo "kept ./$(BINARY): ngodingmcp.service runs it (make build replaces it in place)"; \
+	else \
+		rm -f $(BINARY); echo "rm -f $(BINARY)"; \
+	fi

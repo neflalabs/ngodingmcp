@@ -93,6 +93,46 @@ func TestResolve_EmptyBaseVersion(t *testing.T) {
 	}
 }
 
+// Without a linked-in release version the CalVer line comes from the commit
+// date (in UTC), so a plain `go build` needs no hand-bumped constant.
+func TestResolve_CalVerFromCommitDate(t *testing.T) {
+	tests := []struct {
+		name     string
+		vcsTime  string
+		modified string
+		want     string
+	}{
+		{"clean", "2026-11-19T01:30:00Z", "false", "v2026.11.19-dev+4deb6fa"},
+		{"dirty", "2026-11-19T01:30:00Z", "true", "v2026.11.19-dev+4deb6fa.dirty"},
+		{"date is taken in UTC", "2026-11-19T08:30:00+09:00", "false", "v2026.11.18-dev+4deb6fa"},
+		{"unparsable commit time", "soon", "false", "v0.0.0+4deb6fa"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info := resolve(overrides{}, map[string]string{
+				"vcs.revision": "4deb6fa0123456789abcdef0123456789abcdef0",
+				"vcs.time":     tt.vcsTime,
+				"vcs.modified": tt.modified,
+			}, nil)
+			if got := info.Version(); got != tt.want {
+				t.Fatalf("Version() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// A release version (exact tag or `make release VERSION=...`) wins over the
+// commit date.
+func TestResolve_ReleaseVersionWinsOverCommitDate(t *testing.T) {
+	info := resolve(overrides{version: "v2026.11.3"}, map[string]string{
+		"vcs.revision": "4deb6fa0123456789abcdef0123456789abcdef0",
+		"vcs.time":     "2026-11-19T01:30:00Z",
+	}, nil)
+	if got, want := info.Version(), "v2026.11.3+4deb6fa"; got != want {
+		t.Fatalf("Version() = %q, want %q", got, want)
+	}
+}
+
 func TestVersionHasNoSpaces(t *testing.T) {
 	v := Version()
 	if v == "" || strings.ContainsAny(v, " \t\n") {
