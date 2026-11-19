@@ -100,15 +100,14 @@ func (s *Server) issueTokenPairFor(issuer, clientID, scope, grant, resource stri
 		grant:     grant,
 		expiresAt: now.Add(refreshTokenTTL),
 	}
-	// Mark the client as used so eviction keeps it. Best effort: a failed
-	// persist must not fail the token issue.
+	// Mark the client as used so eviction keeps it.
 	if c, ok := s.clients[clientID]; ok {
 		c.LastUsedAt = now.Unix()
 		s.clients[clientID] = c
-		if err := s.persistLocked(); err != nil {
-			s.logger.Warn("persist oauth state after token issue", "err", err)
-		}
 	}
+	// Save the new refresh token (and LastUsedAt). Best effort: a failed
+	// persist must not fail the token issue.
+	s.saveTokensLocked("issue")
 	s.mu.Unlock()
 
 	return &tokenResponse{
@@ -221,6 +220,9 @@ func (s *Server) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request,
 		// so a reused token is evidence of theft, not just an error.
 		delete(s.refresh, key)
 		s.consumed[key] = consumedGrant{grant: rt.grant, exp: rt.expiresAt}
+		// Save right away, so the old token stays consumed even if the
+		// steps below fail or the process stops before the new one is saved.
+		s.saveTokensLocked("rotate")
 	}
 	s.mu.Unlock()
 
@@ -235,6 +237,7 @@ func (s *Server) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request,
 					delete(s.refresh, k)
 				}
 			}
+			s.saveTokensLocked("revoke")
 			s.logger.Warn("refresh token reuse detected; revoked token family", "clientID", clientID)
 		}
 		s.mu.Unlock()

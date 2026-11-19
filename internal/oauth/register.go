@@ -241,6 +241,8 @@ func responseTypesOrDefault(in []string) []string {
 	return append([]string{}, in...)
 }
 
+// persistLocked writes the whole OAuth state (signing key, clients, refresh
+// token hashes) to oauth.json. Caller must hold s.mu.
 func (s *Server) persistLocked() error {
 	clients := make([]registeredClient, 0, len(s.clients))
 	for _, c := range s.clients {
@@ -250,11 +252,14 @@ func (s *Server) persistLocked() error {
 	if err != nil {
 		return err
 	}
+	live, consumed := s.snapshotRefreshLocked(time.Now())
 	st := &persistedState{
-		Version:       stateVersion,
-		SigningKeyPEM: pemBytes,
-		SigningKeyID:  s.kid,
-		Clients:       clients,
+		Version:               stateVersion,
+		SigningKeyPEM:         pemBytes,
+		SigningKeyID:          s.kid,
+		Clients:               clients,
+		RefreshTokens:         live,
+		ConsumedRefreshTokens: consumed,
 	}
 	return saveState(s.statePath, st)
 }

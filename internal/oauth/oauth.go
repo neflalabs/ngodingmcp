@@ -52,9 +52,10 @@ type Config struct {
 	TrustedProxies []string
 	// Logger for structured logs. When nil, logs go to stderr-discard.
 	Logger *slog.Logger
-	// StatePath is the location of oauth.json (signing key + registered
-	// clients). When empty, ~/.config/ngodingmcp/oauth.json is used. Tests
-	// should point it at a temporary directory.
+	// StatePath is the location of oauth.json (signing key, registered
+	// clients and refresh token hashes). When empty,
+	// ~/.config/ngodingmcp/oauth.json is used. Tests should point it at a
+	// temporary directory.
 	StatePath string
 }
 
@@ -165,11 +166,19 @@ func New(cfg Config) (*Server, error) {
 		if err != nil {
 			return nil, err
 		}
+		persisted.Version = stateVersion
 		persisted.SigningKeyPEM = pemBytes
 		persisted.SigningKeyID = kid
 		if err := saveState(p, persisted); err != nil {
 			return nil, err
 		}
+	}
+
+	// Refresh tokens survive restarts (hashes only); auth codes and CSRF
+	// tokens are short-lived and stay in memory.
+	refresh, consumed, skipped := restoreRefreshTokens(persisted, time.Now())
+	if skipped > 0 {
+		cfg.Logger.Warn("ignored malformed refresh token entries in oauth state", "count", skipped)
 	}
 
 	s := &Server{
@@ -182,9 +191,9 @@ func New(cfg Config) (*Server, error) {
 		statePath:  p,
 		trusted:    trusted,
 		authCodes:  map[string]*authCode{},
-		refresh:    map[string]*refreshToken{},
+		refresh:    refresh,
 		csrfTokens: map[string]csrfEntry{},
-		consumed:   map[string]consumedGrant{},
+		consumed:   consumed,
 	}
 	for _, c := range persisted.Clients {
 		s.clients[c.ClientID] = c

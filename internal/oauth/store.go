@@ -10,7 +10,12 @@ import (
 )
 
 const (
-	stateVersion         = 1
+	// stateVersion is the version written to oauth.json.
+	//   1: signing key + registered clients.
+	//   2: adds refreshTokens and consumedRefreshTokens (hashes only).
+	// Older versions still load; missing fields just mean "no tokens".
+	stateVersion         = 2
+	oldestStateVersion   = 1
 	maxRegisteredClients = 200
 	maxRedirectURIs      = 8
 	maxClientNameLen     = 128
@@ -36,6 +41,10 @@ type persistedState struct {
 	SigningKeyPEM string             `json:"signingKey"`
 	SigningKeyID  string             `json:"signingKeyID"`
 	Clients       []registeredClient `json:"clients,omitempty"`
+	// RefreshTokens and ConsumedRefreshTokens hold hashes only; see
+	// refreshstore.go. Absent in version 1 files.
+	RefreshTokens         []persistedRefreshToken  `json:"refreshTokens,omitempty"`
+	ConsumedRefreshTokens []persistedConsumedToken `json:"consumedRefreshTokens,omitempty"`
 }
 
 // defaultStatePath resolves the OAuth state file location, defaulting to
@@ -65,7 +74,7 @@ func loadState(path string) (*persistedState, error) {
 	if err := json.Unmarshal(data, &st); err != nil {
 		return nil, fmt.Errorf("oauth state file %s is not valid JSON: %w", path, err)
 	}
-	if st.Version != stateVersion {
+	if st.Version < oldestStateVersion || st.Version > stateVersion {
 		return nil, fmt.Errorf("oauth state file %s has unsupported version %d", path, st.Version)
 	}
 	return &st, nil

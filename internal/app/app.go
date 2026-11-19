@@ -192,7 +192,10 @@ func New(cfg Config) (*Server, error) {
 	}
 	mcpHandler := mcp.NewStreamableHTTPHandler(
 		func(*http.Request) *mcp.Server { return mcpServer },
-		&mcp.StreamableHTTPOptions{Logger: logger},
+		// Stateless: every tool call is plain request/response, so no session
+		// state is kept. A restart then never invalidates a client's
+		// Mcp-Session-Id, and chats keep working without re-initializing.
+		&mcp.StreamableHTTPOptions{Logger: logger, Stateless: true},
 	)
 
 	var oauthServer *oauth.Server
