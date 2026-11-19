@@ -19,13 +19,58 @@ type Entry struct {
 	Size  int64  `json:"size"`
 }
 
-const maxListFilesEntries = 2000
+const (
+	// MaxListEntries is the hard cap for one listing.
+	MaxListEntries = 2000
+	// DefaultRecursiveListEntries keeps a recursive walk (or a depth-limited
+	// one) small unless the caller asks for more.
+	DefaultRecursiveListEntries = 300
+)
+
+// ListOptions tunes ListFilesWithOptions.
+type ListOptions struct {
+	Recursive  bool
+	Depth      int // levels below rel; 0 means no depth limit
+	MaxEntries int // 0 means the mode default, capped at MaxListEntries
+}
+
+// EntryLimit returns the effective entry cap for the options. Zero means no
+// cap: a flat listing keeps its historical unlimited behavior, while a
+// recursive walk defaults to DefaultRecursiveListEntries.
+func (o ListOptions) EntryLimit() int {
+	limit := o.MaxEntries
+	if limit <= 0 {
+		if !o.Recursive && o.Depth <= 0 {
+			return 0
+		}
+		limit = DefaultRecursiveListEntries
+	}
+	if limit > MaxListEntries {
+		limit = MaxListEntries
+	}
+	return limit
+}
 
 // ListFiles lists entries in rel. If recursive, it walks the whole subtree.
-// Recursive listings are capped at maxListFilesEntries entries (dependency
-// and build-cache directories are skipped; point path directly at one to
-// list it) and report truncated when that cap is hit.
+// Recursive listings are capped at MaxListEntries entries (dependency and
+// build-cache directories are skipped; point path directly at one to list it)
+// and report truncated when that cap is hit.
 func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error) {
+	// Preserve the historical behavior for callers that do not opt into the
+	// token-oriented defaults used by the MCP tool: recursive listings keep
+	// the 2000-entry cap, flat listings stay unlimited.
+	opts := ListOptions{Recursive: recursive}
+	if recursive {
+		opts.MaxEntries = MaxListEntries
+	}
+	return w.ListFilesWithOptions(rel, opts)
+}
+
+// ListFilesWithOptions is ListFiles with a depth limit and a configurable
+// entry cap. A positive Depth implies a recursive walk and limits how many
+// levels below rel are listed. Dependency and build-cache directories are
+// still skipped unless rel points at one directly.
+func (w *Workspace) ListFilesWithOptions(rel string, o ListOptions) ([]Entry, bool, error) {
 	full, err := w.resolve(rel)
 	if err != nil {
 		return nil, false, err
@@ -37,6 +82,8 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error)
 	if !info.IsDir() {
 		return nil, false, ErrNotDir
 	}
+	limit := o.EntryLimit()
+	recursive := o.Recursive || o.Depth > 0
 	var entries []Entry
 	var truncated bool
 	if recursive {
@@ -53,7 +100,16 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error)
 			if p == full {
 				return nil
 			}
-			if len(entries) >= maxListFilesEntries {
+			if o.Depth > 0 {
+				relp, err := filepath.Rel(full, p)
+				if err != nil || listDepth(relp) > o.Depth {
+					if d.IsDir() {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+			}
+			if limit > 0 && len(entries) >= limit {
 				truncated = true
 				return filepath.SkipAll
 			}
@@ -84,6 +140,10 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error)
 			if w.blocked(filepath.Join(full, d.Name())) {
 				continue
 			}
+			if limit > 0 && len(entries) >= limit {
+				truncated = true
+				break
+			}
 			di, err := d.Info()
 			if err != nil {
 				return nil, false, err
@@ -103,6 +163,16 @@ func (w *Workspace) ListFiles(rel string, recursive bool) ([]Entry, bool, error)
 		return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
 	})
 	return entries, truncated, nil
+}
+
+// listDepth is the number of path segments in rel, where the direct children
+// of the listing root are depth 1.
+func listDepth(rel string) int {
+	rel = filepath.ToSlash(rel)
+	if rel == "." || rel == "" {
+		return 0
+	}
+	return strings.Count(rel, "/") + 1
 }
 
 // Info describes a path.

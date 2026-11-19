@@ -26,7 +26,7 @@ func addEditTools(s *mcp.Server, ws *workspace.Workspace) {
 // --- replace_text ----------------------------------------------------------
 
 type replaceTextArgs struct {
-	Path       string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
+	Path       string `json:"path" jsonschema:"path relative to workspace root"`
 	Old        string `json:"old" jsonschema:"exact text; unique unless replace_all"`
 	New        string `json:"new" jsonschema:"replacement text"`
 	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"replace every occurrence"`
@@ -55,9 +55,9 @@ func addReplaceText(s *mcp.Server, ws *workspace.Workspace) {
 // --- edit_file -------------------------------------------------------------
 
 type editFileArgs struct {
-	Path   string           `json:"path" jsonschema:"path to the file, relative to the workspace root"`
+	Path   string           `json:"path" jsonschema:"path relative to workspace root"`
 	Edits  []workspace.Edit `json:"edits" jsonschema:"edits in order; old must be unique unless replace_all"`
-	DryRun bool             `json:"dry_run,omitempty" jsonschema:"if true, only return the diff and leave the file untouched"`
+	DryRun bool             `json:"dry_run,omitempty" jsonschema:"return the diff without writing"`
 }
 
 type editFileOut struct {
@@ -67,7 +67,7 @@ type editFileOut struct {
 func addEditFile(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "edit_file",
-		Description: "Apply exact-text edits to one file in order, all or nothing, and return a unified diff. dry_run=true previews.",
+		Description: "Apply exact-text edits to one file, all or nothing; returns a unified diff. dry_run=true previews.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in editFileArgs) (*mcp.CallToolResult, editFileOut, error) {
 		res, err := ws.EditFile(in.Path, in.Edits, in.DryRun)
@@ -93,9 +93,9 @@ func addEditFile(s *mcp.Server, ws *workspace.Workspace) {
 // --- insert_text -----------------------------------------------------------
 
 type insertTextArgs struct {
-	Path string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
-	Line int    `json:"line" jsonschema:"1-based line to insert before; use total_lines+1 to append"`
-	Text string `json:"text" jsonschema:"text to insert; a trailing newline is added if missing"`
+	Path string `json:"path" jsonschema:"path relative to workspace root"`
+	Line int    `json:"line" jsonschema:"1-based line; total_lines+1 appends"`
+	Text string `json:"text" jsonschema:"text; newline added if missing"`
 }
 
 type insertTextOut struct {
@@ -121,9 +121,9 @@ func addInsertText(s *mcp.Server, ws *workspace.Workspace) {
 // --- delete_lines ----------------------------------------------------------
 
 type deleteLinesArgs struct {
-	Path string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
-	From int    `json:"from" jsonschema:"first line to delete (1-based, inclusive)"`
-	To   int    `json:"to" jsonschema:"last line to delete (1-based, inclusive)"`
+	Path string `json:"path" jsonschema:"path relative to workspace root"`
+	From int    `json:"from" jsonschema:"first line (1-based)"`
+	To   int    `json:"to" jsonschema:"last line (1-based)"`
 }
 
 type deleteLinesOut struct {
@@ -149,10 +149,10 @@ func addDeleteLines(s *mcp.Server, ws *workspace.Workspace) {
 // --- replace_lines ---------------------------------------------------------
 
 type replaceLinesArgs struct {
-	Path       string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
-	From       int    `json:"from" jsonschema:"first line to replace (1-based, inclusive)"`
-	To         int    `json:"to" jsonschema:"last line to replace (1-based, inclusive)"`
-	NewContent string `json:"new_content" jsonschema:"replacement text; replaces the entire line range"`
+	Path       string `json:"path" jsonschema:"path relative to workspace root"`
+	From       int    `json:"from" jsonschema:"first line (1-based)"`
+	To         int    `json:"to" jsonschema:"last line (1-based)"`
+	NewContent string `json:"new_content" jsonschema:"replacement text for the range"`
 }
 
 type replaceLinesOut struct {

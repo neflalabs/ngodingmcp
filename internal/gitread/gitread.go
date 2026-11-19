@@ -90,19 +90,24 @@ func (g *Git) Diff(ctx context.Context, o DiffOptions) (Result, error) {
 // LogOptions selects what Log shows.
 type LogOptions struct {
 	Path  string // optional file or directory, relative to the workspace root
-	Limit int    // number of commits (default 20, max 200)
+	Limit int    // number of commits (default 10, max 200)
+	Body  bool   // include the commit body below the subject line
 }
 
-// Log returns a one-line-per-commit history.
+// Log returns a one-line-per-commit history (plus the body when asked).
 func (g *Git) Log(ctx context.Context, o LogOptions) (Result, error) {
 	limit := o.Limit
 	if limit <= 0 {
-		limit = 20
+		limit = 10
 	}
 	if limit > 200 {
 		limit = 200
 	}
-	args := []string{"log", "--no-color", "-n", strconv.Itoa(limit), "--date=short", "--pretty=format:%h %ad %an  %s"}
+	format := "%h %ad %an  %s"
+	if o.Body {
+		format += "%n%b"
+	}
+	args := []string{"log", "--no-color", "-n", strconv.Itoa(limit), "--date=short", "--pretty=format:" + format}
 	paths, err := g.paths(o.Path)
 	if err != nil {
 		return Result{}, err

@@ -20,6 +20,13 @@ import (
 // formatted line (~400 bytes) plus the truncation notice.
 const maxSearchOutputBytes = 64 * 1024
 
+// DefaultSearchResults keeps one search_text call cheap; callers can raise
+// max_results up to MaxSearchResults.
+const (
+	DefaultSearchResults = 30
+	MaxSearchResults     = 1000
+)
+
 // addSearchTools registers search_text and search_and_replace.
 func addSearchTools(s *mcp.Server, ws *workspace.Workspace) {
 	addSearchText(s, ws)
@@ -32,7 +39,7 @@ type searchTextArgs struct {
 	Pattern    string `json:"pattern" jsonschema:"Go regular expression to search for"`
 	Path       string `json:"path,omitempty" jsonschema:"directory to search; omit for the workspace root"`
 	Glob       string `json:"glob,omitempty" jsonschema:"glob filter on relative paths, e.g. *.go or **/*.go"`
-	MaxResults int    `json:"max_results,omitempty" jsonschema:"maximum number of matches to return (default 100)"`
+	MaxResults int    `json:"max_results,omitempty" jsonschema:"maximum number of matches to return (default 30, max 1000)"`
 }
 
 type searchTextOut struct {
@@ -42,28 +49,60 @@ type searchTextOut struct {
 func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "search_text",
-		Description: "Regex search over file contents; returns paths and line numbers (dependency/cache dirs skipped unless passed as path).",
+		Description: "Regex search over file contents, grouped by file (default 30 matches; dependency/cache dirs skipped).",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in searchTextArgs) (*mcp.CallToolResult, searchTextOut, error) {
-		matches, err := ws.SearchText(in.Path, in.Pattern, in.Glob, in.MaxResults)
+		limit := in.MaxResults
+		if limit <= 0 {
+			limit = DefaultSearchResults
+		}
+		if limit > MaxSearchResults {
+			limit = MaxSearchResults
+		}
+		matches, err := ws.SearchText(in.Path, in.Pattern, in.Glob, limit)
 		if err != nil {
 			return nil, searchTextOut{}, err
 		}
-		var b strings.Builder
-		kept := matches
-		for i, m := range matches {
-			if b.Len() >= maxSearchOutputBytes {
-				fmt.Fprintf(&b, "... output truncated at %d matches of %d; narrow with path or glob\n", i, len(matches))
-				kept = matches[:i]
-				break
-			}
-			fmt.Fprintf(&b, "%s:%d: %s\n", m.Path, m.Line, m.Text)
+		text, byteCapped := formatSearchMatches(matches)
+		switch {
+		case byteCapped:
+			text += fmt.Sprintf("[output truncated at %d KiB; narrow with path or glob]\n", maxSearchOutputBytes/1024)
+		case len(matches) >= limit:
+			text += fmt.Sprintf("[limit %d matches reached; raise max_results or narrow with path/glob]\n", limit)
 		}
-		if b.Len() == 0 {
-			b.WriteString("no matches\n")
-		}
-		return textResult(b.String()), searchTextOut{Matches: kept}, nil
+		return textResult(text), searchTextOut{Matches: matches}, nil
 	})
+}
+
+// formatSearchMatches groups hits under one path header, so the path is not
+// repeated on every line. byteCapped reports that the output budget stopped
+// the listing before every hit was written.
+func formatSearchMatches(matches []workspace.Match) (text string, byteCapped bool) {
+	if len(matches) == 0 {
+		return "no matches\n", false
+	}
+	var b strings.Builder
+	for i := 0; i < len(matches); {
+		if b.Len() >= maxSearchOutputBytes {
+			return b.String(), true
+		}
+		j := i + 1
+		for j < len(matches) && matches[j].Path == matches[i].Path {
+			j++
+		}
+		noun := "matches"
+		if j-i == 1 {
+			noun = "match"
+		}
+		fmt.Fprintf(&b, "%s (%d %s)\n", matches[i].Path, j-i, noun)
+		for ; i < j; i++ {
+			if b.Len() >= maxSearchOutputBytes {
+				return b.String(), true
+			}
+			fmt.Fprintf(&b, "  %d: %s\n", matches[i].Line, matches[i].Text)
+		}
+	}
+	return b.String(), false
 }
 
 // --- search_and_replace ----------------------------------------------------
@@ -84,7 +123,7 @@ type searchReplaceOut struct {
 func addSearchAndReplace(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "search_and_replace",
-		Description: "Regex replace across workspace files; dry_run=true previews (dependency/cache dirs skipped unless passed as path).",
+		Description: "Regex replace across files; dry_run=true previews (dependency/cache dirs skipped).",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in searchReplaceArgs) (*mcp.CallToolResult, searchReplaceOut, error) {
 		res, err := ws.SearchReplace(in.Path, in.Pattern, in.Replacement, in.Glob, in.DryRun, in.MaxFiles)

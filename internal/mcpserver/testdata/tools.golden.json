@@ -4,7 +4,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Estimate tokens (bytes/4) of files or directories without returning contents (dependency/cache dirs skipped unless passed directly).",
+    "description": "Estimate tokens (bytes/4) without returning contents; dependency/cache dirs are skipped.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -84,15 +84,15 @@
       "additionalProperties": false,
       "properties": {
         "from": {
-          "description": "first line to delete (1-based, inclusive)",
+          "description": "first line (1-based)",
           "type": "integer"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         },
         "to": {
-          "description": "last line to delete (1-based, inclusive)",
+          "description": "last line (1-based)",
           "type": "integer"
         }
       },
@@ -173,12 +173,12 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Apply exact-text edits to one file in order, all or nothing, and return a unified diff. dry_run=true previews.",
+    "description": "Apply exact-text edits to one file, all or nothing; returns a unified diff. dry_run=true previews.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "dry_run": {
-          "description": "if true, only return the diff and leave the file untouched",
+          "description": "return the diff without writing",
           "type": "boolean"
         },
         "edits": {
@@ -208,7 +208,7 @@
           ]
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },
@@ -230,7 +230,7 @@
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "path to inspect, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },
@@ -363,12 +363,16 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "`git diff` for the workspace or one path: staged, --stat or against a ref. Sensitive files are excluded.",
+    "description": "Summarize changes with --stat by default; full=true or a path returns the patch. Sensitive files are excluded.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "full": {
+          "description": "return the full patch instead of the default summary",
+          "type": "boolean"
+        },
         "path": {
-          "description": "file or directory, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         },
         "ref": {
@@ -568,16 +572,20 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Recent commits, one line each (hash, date, author, subject), optionally for one path.",
+    "description": "Recent commits, one line each (default 10); body=true adds commit bodies. Optionally for one path.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "body": {
+          "description": "include the commit body below the subject",
+          "type": "boolean"
+        },
         "limit": {
-          "description": "number of commits to show (default 20, max 200)",
+          "description": "number of commits to show (default 10, max 200)",
           "type": "integer"
         },
         "path": {
-          "description": "file or directory, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },
@@ -772,15 +780,15 @@
       "additionalProperties": false,
       "properties": {
         "line": {
-          "description": "1-based line to insert before; use total_lines+1 to append",
+          "description": "1-based line; total_lines+1 appends",
           "type": "integer"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         },
         "text": {
-          "description": "text to insert; a trailing newline is added if missing",
+          "description": "text; newline added if missing",
           "type": "string"
         }
       },
@@ -798,10 +806,18 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "List files and directories, one level or recursively (max 2000; dependency/cache dirs skipped unless passed as path).",
+    "description": "List files, one level or recursively; recursive caps at 300 entries (depth/max_entries tune it).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
+        "depth": {
+          "description": "levels below path; implies recursive",
+          "type": "integer"
+        },
+        "max_entries": {
+          "description": "entry cap (recursive default 300, max 2000)",
+          "type": "integer"
+        },
         "path": {
           "description": "directory to list; omit or use . for the workspace root",
           "type": "string"
@@ -920,7 +936,7 @@
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "directory path to create, relative to the workspace root",
+          "description": "directory relative to workspace root",
           "type": "string"
         }
       },
@@ -1012,7 +1028,7 @@
           "type": "integer"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },
@@ -1034,19 +1050,19 @@
       "additionalProperties": false,
       "properties": {
         "from": {
-          "description": "first line to replace (1-based, inclusive)",
+          "description": "first line (1-based)",
           "type": "integer"
         },
         "new_content": {
-          "description": "replacement text; replaces the entire line range",
+          "description": "replacement text for the range",
           "type": "string"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         },
         "to": {
-          "description": "last line to replace (1-based, inclusive)",
+          "description": "last line (1-based)",
           "type": "integer"
         }
       },
@@ -1079,7 +1095,7 @@
           "type": "string"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         },
         "replace_all": {
@@ -1123,7 +1139,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Run an allowlisted command in the workspace root (no shell); a non-zero exit is reported in the result. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
+    "description": "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. A non-zero exit is reported in the result. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1140,6 +1156,10 @@
         "command": {
           "description": "allowlisted command, e.g. \"go test\"",
           "type": "string"
+        },
+        "full": {
+          "description": "return the complete output instead of the compact default",
+          "type": "boolean"
         },
         "timeout_seconds": {
           "description": "timeout in seconds (capped by the server)",
@@ -1159,7 +1179,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Regex replace across workspace files; dry_run=true previews (dependency/cache dirs skipped unless passed as path).",
+    "description": "Regex replace across files; dry_run=true previews (dependency/cache dirs skipped).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1201,7 +1221,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Regex search over file contents; returns paths and line numbers (dependency/cache dirs skipped unless passed as path).",
+    "description": "Regex search over file contents, grouped by file (default 30 matches; dependency/cache dirs skipped).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1210,7 +1230,7 @@
           "type": "string"
         },
         "max_results": {
-          "description": "maximum number of matches to return (default 100)",
+          "description": "maximum number of matches to return (default 30, max 1000)",
           "type": "integer"
         },
         "path": {
@@ -1340,12 +1360,12 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Check a file's syntax without running it: full parse for Go and JSON, delimiter check for JS, TS and CSS; other types return check=none.",
+    "description": "Check syntax without running: full parse for Go/JSON, delimiters for JS/TS/CSS; other types return check=none.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },
@@ -1411,7 +1431,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files (dependency/cache dirs skipped).",
+    "description": "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files.",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"
@@ -1433,7 +1453,7 @@
           "type": "string"
         },
         "path": {
-          "description": "path to the file, relative to the workspace root",
+          "description": "path relative to workspace root",
           "type": "string"
         }
       },

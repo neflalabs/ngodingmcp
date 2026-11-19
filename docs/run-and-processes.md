@@ -76,6 +76,10 @@ sebagai sumber policy.
 - `cwd` selalu root workspace. Timeout default 60 detik, bisa diubah per request,
   dibatasi oleh `--run-timeout`.
 - Output stdout+stderr digabung dan dipotong pada 256 KiB.
+- Output default **ringkas**: untuk `go test` hanya blok tes yang gagal plus
+  baris `ok`/`FAIL` per paket; command lain memuat 40 baris awal + 40 baris
+  akhir plus jumlah baris yang dihilangkan. `full: true` mengembalikan seluruh
+  output (sampai batas 256 KiB).
 - Exit code non-zero tetap dikembalikan sebagai hasil (bukan error protokol),
   supaya AI bisa membaca kegagalan build/test.
 - Saat timeout, seluruh process group dibunuh (termasuk child process).

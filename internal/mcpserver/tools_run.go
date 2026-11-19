@@ -19,10 +19,12 @@ type runCommandArgs struct {
 	Command        string   `json:"command" jsonschema:"allowlisted command, e.g. \"go test\""`
 	Args           []string `json:"args,omitempty" jsonschema:"additional arguments appended to the command"`
 	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"timeout in seconds (capped by the server)"`
+	Full           bool     `json:"full,omitempty" jsonschema:"return the complete output instead of the compact default"`
 }
 
 func addRunCommand(s *mcp.Server, run *runner.Runner) {
-	desc := "Run an allowlisted command in the workspace root (no shell); a non-zero exit is reported in the result. " +
+	desc := "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. " +
+		"A non-zero exit is reported in the result. " +
 		allowlistDescription(run.Allowlist(), run.ExactAllowlist())
 	// The transcript in the text content is the whole result; a structured
 	// copy would repeat the command output. The exit status also goes into
@@ -48,7 +50,7 @@ func addRunCommand(s *mcp.Server, run *runner.Runner) {
 		if err != nil {
 			return nil, nil, err
 		}
-		result := textResult(formatRunResult(res, run.Timeout()))
+		result := textResult(formatRunResult(res, run.Timeout(), in.Full))
 		result.Meta = runMeta(res)
 		return result, nil, nil
 	})
@@ -71,7 +73,8 @@ func runMeta(res runner.Result) mcp.Meta {
 }
 
 // formatRunResult renders a finished command as a terminal-style transcript.
-func formatRunResult(res runner.Result, timeout time.Duration) string {
+// Unless full is set, large output is compacted (see compactRunOutput).
+func formatRunResult(res runner.Result, timeout time.Duration, full bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "$ %s\n", runner.FormatArgv(res.Argv))
 	if res.TimedOut {
@@ -80,12 +83,19 @@ func formatRunResult(res runner.Result, timeout time.Duration) string {
 		fmt.Fprintf(&b, "exit code: %d\n", res.ExitCode)
 	}
 	fmt.Fprintf(&b, "duration: %dms\n", res.DurationMS)
-	if res.Output != "" {
+	output, compacted := res.Output, false
+	if !full {
+		output, compacted = compactRunOutput(res.Argv, output)
+	}
+	if output != "" {
 		b.WriteString("\n")
-		b.WriteString(res.Output)
-		if !strings.HasSuffix(res.Output, "\n") {
+		b.WriteString(output)
+		if !strings.HasSuffix(output, "\n") {
 			b.WriteString("\n")
 		}
+	}
+	if compacted {
+		b.WriteString("[compact output; set full=true for the complete transcript]\n")
 	}
 	if res.Truncated {
 		b.WriteString("[output truncated]\n")

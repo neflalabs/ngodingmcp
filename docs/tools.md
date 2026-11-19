@@ -69,14 +69,16 @@ Perilaku umum:
   cache build (`node_modules`, `bower_components`, `.next`, `.nuxt`,
   `.svelte-kit`, `.turbo`, `.cache`, `.venv`, `__pycache__`). Menunjuk langsung
   ke direktori itu (`path: "node_modules"`) tetap bisa. Pengabaian ini diam-diam
-  dan bukan batas keamanan. Hasil `search_text` dipotong per baris (~300 byte di
-  sekitar kecocokan) dan teks output dibatasi 64 KiB.
+  dan bukan batas keamanan. Hasil `search_text` dikelompokkan per file supaya
+  path tidak diulang, default 30 kecocokan (`max_results`, maks 1000), dipotong
+  per baris (~300 byte di sekitar kecocokan), dan teks output dibatasi 64 KiB.
 - **Walker bulk berjalan paralel**: `search_text`, `search_and_replace`,
   `workspace_stats`, dan `count_tokens` memproses file dengan worker pool;
   urutan output tetap deterministik.
-- **`list_files` rekursif dibatasi 2000 entri** dan melewati direktori berat;
-  output yang menyisakan lebih banyak ditandai `truncated: true` (di MCP:
-  notice "listing truncated at 2000 entries").
+- **`list_files` rekursif default dibatasi 300 entri** dan melewati direktori
+  berat. `depth` membatasi kedalaman (implisit rekursif), `max_entries` menaikkan
+  batas sampai 2000. Output yang terpotong ditandai `truncated: true` dan
+  menyertakan notice "listing truncated at N entries".
 - **Write atomik**: setiap tulis memakai temp file lalu `rename`, jadi tidak ada
   file setengah jadi.
 - **Batas ukuran baca** (`--max-file-bytes`, default 2 MiB) dan deteksi file biner.
@@ -102,8 +104,10 @@ saja tanpa menulis.
 ### Read
 
 - `git_status`
-- `git_diff`: opsi `path`, `staged`, `stat`, `ref`
-- `git_log`: opsi `path`, `limit`
+- `git_diff`: default ringkasan `--stat`; `full: true` atau `path` mengembalikan
+  patch (dibatasi 256 KiB, notice `truncated`). Opsi lain: `staged`, `stat`, `ref`.
+- `git_log`: default 10 commit satu baris (`limit`, maks 200); `body: true`
+  menambahkan isi body commit.
 
 Kalau workspace bukan repo git, tool membalas pesan penjelasan (arahkan ke
 `git_init`), bukan error. External diff, textconv, pager, dan fsmonitor dimatikan,

@@ -32,7 +32,7 @@ type workspaceStatsOut struct {
 func addWorkspaceStats(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "workspace_stats",
-		Description: "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files (dependency/cache dirs skipped).",
+		Description: "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ workspaceStatsArgs) (*mcp.CallToolResult, workspaceStatsOut, error) {
 		stats, err := ws.Stats()
@@ -84,7 +84,7 @@ func extsByCount(m map[string]workspace.ExtStats) []string {
 // --- validate_syntax -------------------------------------------------------
 
 type validateSyntaxArgs struct {
-	Path string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
+	Path string `json:"path" jsonschema:"path relative to workspace root"`
 }
 
 type validateSyntaxOut struct {
@@ -94,7 +94,7 @@ type validateSyntaxOut struct {
 func addValidateSyntax(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "validate_syntax",
-		Description: "Check a file's syntax without running it: full parse for Go and JSON, delimiter check for JS, TS and CSS; other types return check=none.",
+		Description: "Check syntax without running: full parse for Go/JSON, delimiters for JS/TS/CSS; other types return check=none.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in validateSyntaxArgs) (*mcp.CallToolResult, validateSyntaxOut, error) {
 		res, err := ws.ValidateSyntax(in.Path)
@@ -135,7 +135,7 @@ type countTokensOut struct {
 func addCountTokens(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "count_tokens",
-		Description: "Estimate tokens (bytes/4) of files or directories without returning contents (dependency/cache dirs skipped unless passed directly).",
+		Description: "Estimate tokens (bytes/4) without returning contents; dependency/cache dirs are skipped.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in countTokensArgs) (*mcp.CallToolResult, countTokensOut, error) {
 		items, err := ws.CountTokens(in.Paths)

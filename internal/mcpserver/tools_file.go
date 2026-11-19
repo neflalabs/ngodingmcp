@@ -28,7 +28,7 @@ func addFileTools(s *mcp.Server, ws *workspace.Workspace) {
 // --- read_file -------------------------------------------------------------
 
 type readFileArgs struct {
-	Path   string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
+	Path   string `json:"path" jsonschema:"path relative to workspace root"`
 	Offset int    `json:"offset,omitempty" jsonschema:"1-based line to start reading from (default 1)"`
 	Limit  int    `json:"limit,omitempty" jsonschema:"maximum number of lines to return (default all)"`
 }
@@ -61,7 +61,7 @@ func addReadFile(s *mcp.Server, ws *workspace.Workspace) {
 // --- write_file ------------------------------------------------------------
 
 type writeFileArgs struct {
-	Path    string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
+	Path    string `json:"path" jsonschema:"path relative to workspace root"`
 	Content string `json:"content" jsonschema:"full file content to write"`
 }
 
@@ -88,8 +88,10 @@ func addWriteFile(s *mcp.Server, ws *workspace.Workspace) {
 // --- list_files ------------------------------------------------------------
 
 type listFilesArgs struct {
-	Path      string `json:"path,omitempty" jsonschema:"directory to list; omit or use . for the workspace root"`
-	Recursive bool   `json:"recursive,omitempty" jsonschema:"walk the whole subtree instead of one level"`
+	Path       string `json:"path,omitempty" jsonschema:"directory to list; omit or use . for the workspace root"`
+	Recursive  bool   `json:"recursive,omitempty" jsonschema:"walk the whole subtree instead of one level"`
+	Depth      int    `json:"depth,omitempty" jsonschema:"levels below path; implies recursive"`
+	MaxEntries int    `json:"max_entries,omitempty" jsonschema:"entry cap (recursive default 300, max 2000)"`
 }
 
 type listFilesOut struct {
@@ -101,10 +103,11 @@ type listFilesOut struct {
 func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "list_files",
-		Description: "List files and directories, one level or recursively (max 2000; dependency/cache dirs skipped unless passed as path).",
+		Description: "List files, one level or recursively; recursive caps at 300 entries (depth/max_entries tune it).",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in listFilesArgs) (*mcp.CallToolResult, listFilesOut, error) {
-		entries, truncated, err := ws.ListFiles(in.Path, in.Recursive)
+		opts := workspace.ListOptions{Recursive: in.Recursive, Depth: in.Depth, MaxEntries: in.MaxEntries}
+		entries, truncated, err := ws.ListFilesWithOptions(in.Path, opts)
 		if err != nil {
 			return nil, listFilesOut{}, err
 		}
@@ -120,7 +123,7 @@ func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 			b.WriteString("(empty)\n")
 		}
 		if truncated {
-			b.WriteString("... listing truncated at 2000 entries; narrow with path\n")
+			fmt.Fprintf(&b, "... listing truncated at %d entries; narrow with path/depth or raise max_entries\n", opts.EntryLimit())
 		}
 		return textResult(b.String()), listFilesOut{Path: in.Path, Entries: entries, Truncated: truncated}, nil
 	})
@@ -129,7 +132,7 @@ func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 // --- file_info -------------------------------------------------------------
 
 type fileInfoArgs struct {
-	Path string `json:"path" jsonschema:"path to inspect, relative to the workspace root"`
+	Path string `json:"path" jsonschema:"path relative to workspace root"`
 }
 
 type fileInfoOut struct {
@@ -155,7 +158,7 @@ func addFileInfo(s *mcp.Server, ws *workspace.Workspace) {
 // --- mkdir_path ------------------------------------------------------------
 
 type mkdirPathArgs struct {
-	Path string `json:"path" jsonschema:"directory path to create, relative to the workspace root"`
+	Path string `json:"path" jsonschema:"directory relative to workspace root"`
 }
 
 type mkdirPathOut struct {

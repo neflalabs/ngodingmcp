@@ -37,6 +37,11 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Println("line two")
 		fmt.Println("line three")
 		os.Exit(0)
+	case "many":
+		for i := 1; i <= 120; i++ {
+			fmt.Printf("line %03d\n", i)
+		}
+		os.Exit(0)
 	case "ansi":
 		fmt.Print("\x1b[31mred\x1b[0m\rprogress\n")
 		os.Exit(0)
@@ -161,6 +166,25 @@ func TestStartLogsAndExitStatus(t *testing.T) {
 	}
 	if len(res.Lines) != 0 {
 		t.Errorf("cursor read returned %d lines, want 0", len(res.Lines))
+	}
+}
+
+func TestLogsDefaultTailIsBounded(t *testing.T) {
+	m := newManager(t, 0)
+	if _, err := m.Start("many", helperArgv("many")); err != nil {
+		t.Fatal(err)
+	}
+	waitExit(t, m, "many")
+
+	_, res, err := m.Logs("many", 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Lines) != 100 {
+		t.Fatalf("default tail returned %d lines, want 100", len(res.Lines))
+	}
+	if res.Lines[0].Text != "line 021" || res.Lines[len(res.Lines)-1].Text != "line 120" {
+		t.Fatalf("default tail = %q .. %q", res.Lines[0].Text, res.Lines[len(res.Lines)-1].Text)
 	}
 }
 

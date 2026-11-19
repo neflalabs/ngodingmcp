@@ -2,6 +2,7 @@ package mcpserver_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -184,6 +185,64 @@ func TestGitToolsWithoutRepo(t *testing.T) {
 	}
 }
 
+func TestListFilesDepthAndEntryCap(t *testing.T) {
+	s, ws := newExtraSession(t)
+	for _, name := range []string{"root.txt", "dir/child.txt", "dir/sub/grand.txt"} {
+		full := filepath.Join(ws.Root(), filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte("x\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	depth1 := getTextContent(callTool(t, s, "list_files", map[string]any{"depth": 1}))
+	if !strings.Contains(depth1, "root.txt") || !strings.Contains(depth1, "dir/") {
+		t.Errorf("depth 1 misses root entries:\n%s", depth1)
+	}
+	if strings.Contains(depth1, "child.txt") || strings.Contains(depth1, "grand.txt") {
+		t.Errorf("depth 1 walks too far:\n%s", depth1)
+	}
+
+	depth2 := getTextContent(callTool(t, s, "list_files", map[string]any{"depth": 2}))
+	if !strings.Contains(depth2, "child.txt") || strings.Contains(depth2, "grand.txt") {
+		t.Errorf("depth 2 should include children but not grandchildren:\n%s", depth2)
+	}
+
+	capped := getTextContent(callTool(t, s, "list_files", map[string]any{"recursive": true, "max_entries": 2}))
+	if !strings.Contains(capped, "listing truncated at 2 entries") {
+		t.Errorf("max_entries cap not reported:\n%s", capped)
+	}
+}
+
+func TestSearchTextDefaultLimitAndGrouping(t *testing.T) {
+	s, ws := newExtraSession(t)
+	if err := os.WriteFile(filepath.Join(ws.Root(), "a.go"), []byte("needle one\nother\nneedle two\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	grouped := getTextContent(callTool(t, s, "search_text", map[string]any{"pattern": "needle"}))
+	if !strings.Contains(grouped, "a.go (2 matches)") {
+		t.Errorf("matches are not grouped by path:\n%s", grouped)
+	}
+	if strings.Count(grouped, "a.go") != 1 {
+		t.Errorf("path repeated on match lines:\n%s", grouped)
+	}
+
+	var many strings.Builder
+	for i := 0; i < 40; i++ {
+		fmt.Fprintf(&many, "needle line %d\n", i+1)
+	}
+	if err := os.WriteFile(filepath.Join(ws.Root(), "many.txt"), []byte(many.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	limited := getTextContent(callTool(t, s, "search_text", map[string]any{"pattern": "needle", "glob": "*.txt"}))
+	if !strings.Contains(limited, "[limit 30 matches reached;") {
+		t.Errorf("default max_results not reported:\n%s", limited)
+	}
+}
+
 func TestGitToolsWithRepo(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
@@ -215,9 +274,22 @@ func TestGitToolsWithRepo(t *testing.T) {
 	if !strings.Contains(status, "main.go") || strings.Contains(status, ".env") {
 		t.Errorf("unexpected git_status:\n%s", status)
 	}
+	// No path and no full flag: a --stat summary, not the whole patch.
 	diff := getTextContent(callTool(t, s, "git_diff", map[string]any{}))
-	if !strings.Contains(diff, "+func main() {}") {
-		t.Errorf("unexpected git_diff:\n%s", diff)
+	if !strings.Contains(diff, "1 file changed") || strings.Contains(diff, "+func main() {}") {
+		t.Errorf("unexpected summary git_diff:\n%s", diff)
+	}
+	if !strings.Contains(diff, "full=true") {
+		t.Errorf("summary diff should point at full=true:\n%s", diff)
+	}
+	fullDiff := getTextContent(callTool(t, s, "git_diff", map[string]any{"full": true}))
+	if !strings.Contains(fullDiff, "+func main() {}") {
+		t.Errorf("unexpected full git_diff:\n%s", fullDiff)
+	}
+	// A path selects the patch for that file.
+	pathDiff := getTextContent(callTool(t, s, "git_diff", map[string]any{"path": "main.go"}))
+	if !strings.Contains(pathDiff, "+func main() {}") {
+		t.Errorf("unexpected path git_diff:\n%s", pathDiff)
 	}
 	log := getTextContent(callTool(t, s, "git_log", map[string]any{"limit": 5}))
 	if !strings.Contains(log, "first commit") {

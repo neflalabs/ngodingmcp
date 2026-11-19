@@ -52,15 +52,17 @@ type gitOut struct {
 type gitStatusArgs struct{}
 
 type gitDiffArgs struct {
-	Path   string `json:"path,omitempty" jsonschema:"file or directory, relative to the workspace root"`
+	Path   string `json:"path,omitempty" jsonschema:"path relative to workspace root"`
 	Staged bool   `json:"staged,omitempty" jsonschema:"staged changes (index vs HEAD)"`
 	Stat   bool   `json:"stat,omitempty" jsonschema:"only show a per-file summary"`
 	Ref    string `json:"ref,omitempty" jsonschema:"commit or branch to compare against, e.g. HEAD~1"`
+	Full   bool   `json:"full,omitempty" jsonschema:"return the full patch instead of the default summary"`
 }
 
 type gitLogArgs struct {
-	Path  string `json:"path,omitempty" jsonschema:"file or directory, relative to the workspace root"`
-	Limit int    `json:"limit,omitempty" jsonschema:"number of commits to show (default 20, max 200)"`
+	Path  string `json:"path,omitempty" jsonschema:"path relative to workspace root"`
+	Limit int    `json:"limit,omitempty" jsonschema:"number of commits to show (default 10, max 200)"`
+	Body  bool   `json:"body,omitempty" jsonschema:"include the commit body below the subject"`
 }
 
 func addGitReadTools(s *mcp.Server, g *gitread.Git) {
@@ -75,26 +77,35 @@ func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 
 	addTextTool(s, &mcp.Tool{
 		Name:        "git_diff",
-		Description: "`git diff` for the workspace or one path: staged, --stat or against a ref. Sensitive files are excluded.",
+		Description: "Summarize changes with --stat by default; full=true or a path returns the patch. Sensitive files are excluded.",
 		Annotations: readOnly(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitDiffArgs) (*mcp.CallToolResult, gitOut, error) {
-		res, err := g.Diff(ctx, gitread.DiffOptions{Path: in.Path, Staged: in.Staged, Stat: in.Stat, Ref: in.Ref})
+		stat := in.Stat
+		summaryOnly := !in.Stat && !in.Full && strings.TrimSpace(in.Path) == ""
+		if summaryOnly {
+			stat = true
+		}
+		res, err := g.Diff(ctx, gitread.DiffOptions{Path: in.Path, Staged: in.Staged, Stat: stat, Ref: in.Ref})
+		if summaryOnly {
+			return gitResult(res, err, "(no differences)", "[patch omitted; set full=true or pass path for file contents]")
+		}
 		return gitResult(res, err, "(no differences)")
 	})
 
 	addTextTool(s, &mcp.Tool{
 		Name:        "git_log",
-		Description: "Recent commits, one line each (hash, date, author, subject), optionally for one path.",
+		Description: "Recent commits, one line each (default 10); body=true adds commit bodies. Optionally for one path.",
 		Annotations: readOnly(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitLogArgs) (*mcp.CallToolResult, gitOut, error) {
-		res, err := g.Log(ctx, gitread.LogOptions{Path: in.Path, Limit: in.Limit})
+		res, err := g.Log(ctx, gitread.LogOptions{Path: in.Path, Limit: in.Limit, Body: in.Body})
 		return gitResult(res, err, "(no commits)")
 	})
 }
 
 // gitResult turns a gitread result into a tool result. A missing repository
-// is not an error: it returns a friendly explanation instead.
-func gitResult(res gitread.Result, err error, empty string) (*mcp.CallToolResult, gitOut, error) {
+// is not an error: it returns a friendly explanation instead. Notes are
+// appended only when there is output to explain.
+func gitResult(res gitread.Result, err error, empty string, notes ...string) (*mcp.CallToolResult, gitOut, error) {
 	if errors.Is(err, gitread.ErrNotRepo) {
 		return textResult(notRepoMessage), gitOut{Repository: false}, nil
 	}
@@ -104,6 +115,12 @@ func gitResult(res gitread.Result, err error, empty string) (*mcp.CallToolResult
 	text := res.Output
 	if strings.TrimSpace(text) == "" {
 		text = empty
+	} else {
+		for _, note := range notes {
+			if note != "" {
+				text = strings.TrimRight(text, "\n") + "\n" + note
+			}
+		}
 	}
 	if res.Truncated {
 		text += "\n[output truncated]"

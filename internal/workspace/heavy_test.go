@@ -91,12 +91,84 @@ func TestListFilesRecursiveSkipsHeavyAndCaps(t *testing.T) {
 	}
 }
 
+func TestListOptionsEntryLimit(t *testing.T) {
+	cases := []struct {
+		name string
+		opts ListOptions
+		want int
+	}{
+		{"flat default unlimited", ListOptions{}, 0},
+		{"flat explicit cap", ListOptions{MaxEntries: 10}, 10},
+		{"recursive default", ListOptions{Recursive: true}, DefaultRecursiveListEntries},
+		{"depth implies recursive", ListOptions{Depth: 2}, DefaultRecursiveListEntries},
+		{"capped at hard max", ListOptions{MaxEntries: MaxListEntries + 500}, MaxListEntries},
+	}
+	for _, tc := range cases {
+		if got := tc.opts.EntryLimit(); got != tc.want {
+			t.Errorf("%s: EntryLimit() = %d, want %d", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestListFilesWithOptionsDepth(t *testing.T) {
+	ws := newTestWorkspace(t)
+	mustWrite(t, ws, "root.txt", "x\n")
+	mustWrite(t, ws, "dir/child.txt", "x\n")
+	mustWrite(t, ws, "dir/sub/grand.txt", "x\n")
+
+	paths := func(entries []Entry) []string {
+		var out []string
+		for _, e := range entries {
+			out = append(out, e.Path)
+		}
+		return out
+	}
+
+	got, truncated, err := ws.ListFilesWithOptions("", ListOptions{Recursive: true, Depth: 1})
+	if err != nil || truncated {
+		t.Fatalf("depth 1: %v truncated=%t", err, truncated)
+	}
+	joined := strings.Join(paths(got), ",")
+	if !strings.Contains(joined, "root.txt") || !strings.Contains(joined, "dir") {
+		t.Fatalf("depth 1 entries = %v", paths(got))
+	}
+	if strings.Contains(joined, "child.txt") || strings.Contains(joined, "grand.txt") {
+		t.Fatalf("depth 1 walked too far: %v", paths(got))
+	}
+
+	got, _, err = ws.ListFilesWithOptions("", ListOptions{Recursive: true, Depth: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined = strings.Join(paths(got), ",")
+	if !strings.Contains(joined, "child.txt") || strings.Contains(joined, "grand.txt") {
+		t.Fatalf("depth 2 entries = %v", paths(got))
+	}
+}
+
+func TestListFilesDefaultRecursiveCap(t *testing.T) {
+	ws := newTestWorkspace(t)
+	for i := 0; i < DefaultRecursiveListEntries+5; i++ {
+		mustWrite(t, ws, fmt.Sprintf("f%04d.txt", i), "x\n")
+	}
+	entries, truncated, err := ws.ListFilesWithOptions("", ListOptions{Recursive: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !truncated {
+		t.Fatal("expected truncated=true past the default recursive cap")
+	}
+	if len(entries) != DefaultRecursiveListEntries {
+		t.Fatalf("entries = %d, want %d", len(entries), DefaultRecursiveListEntries)
+	}
+}
+
 func TestListFilesRecursiveTruncated(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping the 2000-entry stress test in -short mode")
 	}
 	ws := newTestWorkspace(t)
-	for i := 0; i < maxListFilesEntries+10; i++ {
+	for i := 0; i < MaxListEntries+10; i++ {
 		mustWrite(t, ws, fmt.Sprintf("f%04d.txt", i), "x\n")
 	}
 	entries, truncated, err := ws.ListFiles("", true)
@@ -106,7 +178,7 @@ func TestListFilesRecursiveTruncated(t *testing.T) {
 	if !truncated {
 		t.Fatal("expected truncated=true past the cap")
 	}
-	if len(entries) != maxListFilesEntries {
-		t.Fatalf("entries = %d, want %d", len(entries), maxListFilesEntries)
+	if len(entries) != MaxListEntries {
+		t.Fatalf("entries = %d, want %d", len(entries), MaxListEntries)
 	}
 }

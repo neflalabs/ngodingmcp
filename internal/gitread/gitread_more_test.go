@@ -3,6 +3,7 @@ package gitread
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -85,6 +86,47 @@ func TestAllowSensitiveShowsSensitiveFiles(t *testing.T) {
 	}
 	if !strings.Contains(out.Output, ".env") {
 		t.Fatalf("status with AllowSensitive misses .env:\n%s", out.Output)
+	}
+}
+
+func TestLogDefaultLimitIsTen(t *testing.T) {
+	g, root := newGit(t)
+	gitOut(t, root, "init", "-q")
+	for i := 0; i < 12; i++ {
+		write(t, root, "f.txt", fmt.Sprintf("%d\n", i))
+		commitAll(t, root, fmt.Sprintf("commit %02d", i))
+	}
+	out, err := g.Log(context.Background(), LogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(strings.TrimSpace(out.Output), "\n") + 1; got != 10 {
+		t.Fatalf("default log returned %d commits, want 10:\n%s", got, out.Output)
+	}
+	if !strings.Contains(out.Output, "commit 11") || strings.Contains(out.Output, "commit 01") {
+		t.Fatalf("default log is not the newest 10 commits:\n%s", out.Output)
+	}
+}
+
+func TestLogBody(t *testing.T) {
+	g, root := newGit(t)
+	gitOut(t, root, "init", "-q")
+	write(t, root, "f.txt", "x\n")
+	commitAll(t, root, "subject line\n\nbody detail")
+
+	plain, err := g.Log(context.Background(), LogOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(plain.Output, "body detail") {
+		t.Fatalf("body leaked without body=true:\n%s", plain.Output)
+	}
+	withBody, err := g.Log(context.Background(), LogOptions{Body: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(withBody.Output, "subject line") || !strings.Contains(withBody.Output, "body detail") {
+		t.Fatalf("body=true output = %q", withBody.Output)
 	}
 }
 
