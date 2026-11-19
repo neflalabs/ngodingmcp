@@ -147,7 +147,9 @@ func (w *Workspace) Mkdir(rel string) (string, error) {
 	if err := os.MkdirAll(full, 0o755); err != nil {
 		return "", err
 	}
-	return w.relPath(full), nil
+	relp := w.relPath(full)
+	w.hub.notify("mkdir", relp, "")
+	return relp, nil
 }
 
 // Rename moves from to to inside the workspace.
@@ -160,13 +162,16 @@ func (w *Workspace) Rename(from, to string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	fromRel := w.relPath(src)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return "", err
 	}
 	if err := os.Rename(src, dst); err != nil {
 		return "", err
 	}
-	return w.relPath(dst), nil
+	toRel := w.relPath(dst)
+	w.hub.notify("rename", toRel, fromRel)
+	return toRel, nil
 }
 
 // Delete removes a file or directory. If recursive is true and rel is a directory,
@@ -179,13 +184,22 @@ func (w *Workspace) Delete(rel string, recursive ...bool) error {
 	if full == w.Root() {
 		return errors.New("refusing to delete the workspace root")
 	}
+	relp := w.relPath(full)
 	if len(recursive) > 0 && recursive[0] {
 		if err := w.checkNoSensitiveInside(full); err != nil {
 			return err
 		}
-		return os.RemoveAll(full)
+		if err := os.RemoveAll(full); err != nil {
+			return err
+		}
+		w.hub.notify("delete", relp, "")
+		return nil
 	}
-	return os.Remove(full)
+	if err := os.Remove(full); err != nil {
+		return err
+	}
+	w.hub.notify("delete", relp, "")
+	return nil
 }
 
 // checkNoSensitiveInside refuses to touch a directory tree that contains a

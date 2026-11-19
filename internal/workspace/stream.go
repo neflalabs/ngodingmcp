@@ -126,6 +126,7 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 		if err := os.Remove(tmpName); err != nil {
 			return StreamResult{}, err
 		}
+		w.hub.notify("write", relp, "")
 		return StreamResult{Path: relp, Bytes: n, SHA256: sum}, nil
 	}
 	if _, err := w.CheckWritable(relp, true); err != nil {
@@ -134,5 +135,6 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 	if err := os.Rename(tmpName, full); err != nil {
 		return StreamResult{}, err
 	}
+	w.hub.notify("write", relp, "")
 	return StreamResult{Path: relp, Bytes: n, SHA256: sum}, nil
 }

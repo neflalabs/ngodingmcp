@@ -326,6 +326,32 @@ input:focus, textarea:focus { border-color: var(--focus-border); }
 }
 .syntax-banner.hidden { display: none; }
 
+.external-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 14px;
+  font-size: 12px;
+  background: var(--banner-err-bg);
+  border-bottom: 1px solid var(--dirty-border);
+  color: var(--warning);
+}
+.external-banner.hidden { display: none; }
+.external-banner-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.external-banner-actions button { padding: 2px 9px; font-size: 11px; }
+
+.live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  transition: background .2s ease;
+}
+.live-dot.connected { background: var(--success); }
+.live-dot.reconnecting { background: var(--warning); }
+
 .statusbar {
   display: flex;
   justify-content: space-between;

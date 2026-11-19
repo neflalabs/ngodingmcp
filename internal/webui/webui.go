@@ -214,6 +214,7 @@ func (u *UI) API() http.Handler {
 	top := http.NewServeMux()
 	u.addWorkspaceRoutes(top)
 	u.addSettingsRoutes(top)
+	top.HandleFunc("GET /events", u.handleEvents)
 	top.Handle("/", u.holdWorkspace(u.filesAPI()))
 	return top
 }

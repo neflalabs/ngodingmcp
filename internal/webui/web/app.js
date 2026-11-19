@@ -6,12 +6,56 @@ const lineNumbers = $("lineNumbers");
 const treeEl = $("tree");
 const searchResults = $("searchResults");
 const syntaxBanner = $("syntaxBanner");
+const externalBanner = $("externalChangeBanner");
 
-const state = {
+function debounce(fn, delay) {
+  let timer = null;
+  const debounced = (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+  debounced.cancel = () => clearTimeout(timer);
+  debounced.flush = (...args) => {
+    clearTimeout(timer);
+    fn(...args);
+  };
+  return debounced;
+}
+
+// Reactive state store: changes to tracked keys trigger targeted UI updates.
+const stateListeners = new Map();
+function onState(keys, fn) {
+  for (const k of keys) {
+    if (!stateListeners.has(k)) stateListeners.set(k, new Set());
+    stateListeners.get(k).add(fn);
+  }
+}
+
+const rawState = {
   currentPath: null,
   dirty: false,
   expandedDirs: new Set(),
+  activeNode: null,
+  lastLineCount: 0,
+  externalConflict: false,
+  sseState: "connecting", // "connecting" | "connected" | "reconnecting"
+  lastSeq: 0,
+  lastSelfWritePath: null,
+  lastSelfWriteAt: 0,
 };
+
+const state = new Proxy(rawState, {
+  set(target, prop, value) {
+    const prev = target[prop];
+    target[prop] = value;
+    if (prev !== value && stateListeners.has(prop)) {
+      for (const fn of stateListeners.get(prop)) {
+        fn(value, prev);
+      }
+    }
+    return true;
+  },
+});
 
 // escapeHtml makes a value safe to interpolate into innerHTML.
 function escapeHtml(s) {
@@ -55,20 +99,35 @@ function setStatus(msg, isError = false) {
   el.classList.toggle("error", isError);
 }
 
-function updateLineNumbers() {
-  const lines = editor.value.split("\n").length || 1;
-  let nums = "";
-  for (let i = 1; i <= lines; i++) {
-    nums += i + "\n";
+// Cached line counter: avoids rebuilding multi-thousand-line strings on every keystroke.
+function countLinesFast(text) {
+  if (!text) return 1;
+  let count = 1;
+  let idx = -1;
+  while ((idx = text.indexOf("\n", idx + 1)) !== -1) {
+    count++;
   }
-  lineNumbers.textContent = nums;
+  return count;
 }
 
-function updateTokenEstimate() {
-  const bytes = new TextEncoder().encode(editor.value).length;
+function updateLineNumbers(force = false) {
+  const lines = countLinesFast(editor.value);
+  if (!force && lines === state.lastLineCount) return;
+  state.lastLineCount = lines;
+  const arr = new Array(lines);
+  for (let i = 0; i < lines; i++) {
+    arr[i] = i + 1;
+  }
+  lineNumbers.textContent = arr.join("\n") + "\n";
+}
+
+const textEncoder = new TextEncoder();
+function updateTokenEstimateNow() {
+  const bytes = textEncoder.encode(editor.value).length;
   const tokens = Math.floor(bytes / 4);
   $("tokenEstimate").textContent = `~${tokens.toLocaleString()} tokens (${bytes.toLocaleString()} B)`;
 }
+const updateTokenEstimate = debounce(updateTokenEstimateNow, 150);
 
 function updateUI() {
   const hasFile = !!state.currentPath;
@@ -83,13 +142,43 @@ function updateUI() {
   badge.classList.toggle("dirty", state.dirty);
   document.title = (state.dirty ? "● " : "") + (state.currentPath || "NgodingMCP");
   updateLineNumbers();
-  updateTokenEstimate();
+  updateTokenEstimateNow();
+}
+
+onState(["currentPath", "dirty"], () => {
+  updateUI();
+});
+
+onState(["externalConflict"], (conflict) => {
+  if (!externalBanner) return;
+  externalBanner.classList.toggle("hidden", !conflict);
+});
+
+onState(["sseState"], (status) => {
+  const dot = $("liveDot");
+  if (!dot) return;
+  dot.className = "live-dot" + (status === "connected" ? " connected" : status === "reconnecting" ? " reconnecting" : "");
+  dot.title =
+    status === "connected"
+      ? "Live workspace sync active"
+      : status === "reconnecting"
+      ? "Reconnecting live sync…"
+      : "Connecting live sync…";
+});
+
+function showExternalConflict(msg) {
+  const el = $("externalChangeMsg");
+  if (el) el.textContent = msg;
+  state.externalConflict = true;
+}
+
+function clearExternalConflict() {
+  state.externalConflict = false;
 }
 
 function markDirty() {
   if (!state.dirty) {
     state.dirty = true;
-    updateUI();
   } else {
     updateLineNumbers();
     updateTokenEstimate();
@@ -98,20 +187,31 @@ function markDirty() {
 
 // --- Tree -----------------------------------------------------------------
 
+let treeLoadToken = 0;
+
 async function loadTree() {
+  const token = ++treeLoadToken;
   const prevScroll = treeEl.scrollTop;
-  treeEl.innerHTML = "";
+  const frag = document.createDocumentFragment();
   try {
-    await renderDir(treeEl, "");
+    await renderDir(frag, "", token);
+    if (token !== treeLoadToken) return;
+    treeEl.innerHTML = "";
+    treeEl.appendChild(frag);
     treeEl.scrollTop = prevScroll;
     setStatus("workspace loaded");
   } catch (err) {
-    setStatus(err.message, true);
+    if (token === treeLoadToken) setStatus(err.message, true);
   }
 }
 
-async function renderDir(parent, dir) {
+const scheduleTreeRefresh = debounce(() => {
+  loadTree();
+}, 180);
+
+async function renderDir(parent, dir, token = treeLoadToken) {
   const data = await api("/tree?path=" + encodeURIComponent(dir));
+  if (token !== treeLoadToken) return;
   for (const entry of data.entries) {
     const li = document.createElement("li");
     const row = document.createElement("div");
@@ -170,7 +270,7 @@ async function renderDir(parent, dir) {
         ev.stopPropagation();
         if (children.hidden && !children.dataset.loaded) {
           try {
-            await renderDir(children, entry.path);
+            await renderDir(children, entry.path, treeLoadToken);
             children.dataset.loaded = "1";
           } catch (err) {
             setStatus(err.message, true);
@@ -188,7 +288,7 @@ async function renderDir(parent, dir) {
       li.append(row, children);
       if (wasOpen) {
         try {
-          await renderDir(children, entry.path);
+          await renderDir(children, entry.path, token);
           children.dataset.loaded = "1";
         } catch (_) {
           // Directory may have been removed or become inaccessible; collapse it.
@@ -247,11 +347,9 @@ async function renamePath(oldPath, isDir) {
       remapExpandedDirs(oldPath, data.path);
       if (state.currentPath && state.currentPath.startsWith(oldPath + "/")) {
         state.currentPath = data.path + state.currentPath.slice(oldPath.length);
-        updateUI();
       }
     } else if (state.currentPath === oldPath) {
       state.currentPath = data.path;
-      updateUI();
     }
     await loadTree();
     setStatus(`Renamed to ${data.path}`);
@@ -272,11 +370,11 @@ async function deletePath(targetPath, isDir) {
     });
     pruneExpandedDirs(targetPath, isDir);
     if (state.currentPath === targetPath || (isDir && state.currentPath && state.currentPath.startsWith(targetPath + "/"))) {
-      state.currentPath = null;
-      state.dirty = false;
+      clearExternalConflict();
       editor.value = "";
       syntaxBanner.classList.add("hidden");
-      updateUI();
+      state.currentPath = null;
+      state.dirty = false;
     }
     await loadTree();
     setStatus(`Deleted ${targetPath}`);
@@ -332,29 +430,40 @@ function jumpToLine(lineNum) {
   lineNumbers.scrollTop = targetTop;
 }
 
-async function openFile(path, lineNum = null) {
-  if (state.currentPath === path && lineNum) {
+async function openFile(path, lineNum = null, options = {}) {
+  const { force = false, preserveScroll = false } = options;
+  if (!force && state.currentPath === path && lineNum) {
     jumpToLine(lineNum);
     return;
   }
-  if (state.dirty && !confirm("Discard unsaved changes?")) return;
+  if (!force && state.dirty && !confirm("Discard unsaved changes?")) return;
+  const prevScrollTop = editor.scrollTop;
+  const prevSelStart = editor.selectionStart;
+  const prevSelEnd = editor.selectionEnd;
   try {
     const data = await api("/file?path=" + encodeURIComponent(path));
-    state.currentPath = data.path;
+    clearExternalConflict();
     editor.value = data.content;
+    state.currentPath = data.path;
     state.dirty = false;
+    updateUI();
     setActiveNode(data.path);
     syntaxBanner.classList.add("hidden");
     syntaxBanner.textContent = "";
-    updateUI();
     setStatus(`${data.totalLines} lines · ${data.size} bytes`);
-    if (lineNum) {
+    if (preserveScroll) {
+      const maxPos = editor.value.length;
+      editor.setSelectionRange(Math.min(prevSelStart, maxPos), Math.min(prevSelEnd, maxPos));
+      editor.scrollTop = prevScrollTop;
+      lineNumbers.scrollTop = prevScrollTop;
+      updateCursor();
+    } else if (lineNum) {
       jumpToLine(lineNum);
     } else {
       updateCursor();
       editor.focus();
     }
-    if (isMobileViewport()) {
+    if (isMobileViewport() && !preserveScroll) {
       setSidebarCollapsed(true, false);
     }
   } catch (err) {
@@ -364,13 +473,16 @@ async function openFile(path, lineNum = null) {
 
 async function saveFile() {
   if (!state.currentPath) return;
+  const savingPath = state.currentPath;
+  state.lastSelfWritePath = savingPath;
+  state.lastSelfWriteAt = Date.now();
   try {
     const data = await api("/file", {
       method: "PUT",
-      body: { path: state.currentPath, content: editor.value },
+      body: { path: savingPath, content: editor.value },
     });
+    clearExternalConflict();
     state.dirty = false;
-    updateUI();
     setStatus(`saved ${data.bytes} bytes at ${new Date().toLocaleTimeString()}`);
     // Auto-check syntax on save
     checkSyntax();
@@ -418,6 +530,22 @@ editor.addEventListener("scroll", () => {
   lineNumbers.scrollTop = editor.scrollTop;
 });
 
+// Insert text while preserving browser native Undo/Redo history (Ctrl+Z).
+function insertEditorText(text, selStart, selEnd) {
+  editor.focus();
+  editor.setSelectionRange(selStart, selEnd);
+  let inserted = false;
+  try {
+    inserted = document.execCommand("insertText", false, text);
+  } catch (_) {
+    inserted = false;
+  }
+  if (!inserted) {
+    editor.setRangeText(text, selStart, selEnd, "end");
+    markDirty();
+  }
+}
+
 // --- Actions --------------------------------------------------------------
 
 async function newFile() {
@@ -454,10 +582,9 @@ async function renameCurrent() {
       method: "POST",
       body: { from: oldPath, to },
     });
+    // Preserve dirty state if the editor has unsaved buffer edits.
     state.currentPath = data.path;
-    state.dirty = false;
     await loadTree();
-    updateUI();
     setStatus("renamed");
   } catch (err) {
     setStatus(err.message, true);
@@ -469,11 +596,11 @@ async function deleteCurrent() {
   if (!confirm(`Delete ${state.currentPath}?`)) return;
   try {
     await api("/file?path=" + encodeURIComponent(state.currentPath), { method: "DELETE" });
-    state.currentPath = null;
-    state.dirty = false;
+    clearExternalConflict();
     editor.value = "";
     syntaxBanner.classList.add("hidden");
-    updateUI();
+    state.currentPath = null;
+    state.dirty = false;
     await loadTree();
     setStatus("deleted");
   } catch (err) {
@@ -483,22 +610,28 @@ async function deleteCurrent() {
 
 // --- Search ---------------------------------------------------------------
 
+let searchSeq = 0;
+
 async function runSearch() {
   const q = $("searchInput").value.trim();
   if (!q) {
+    searchSeq++;
     searchResults.classList.add("hidden");
     searchResults.innerHTML = "";
     return;
   }
+  const seq = ++searchSeq;
   const glob = $("globInput").value.trim();
   try {
     const data = await api(
       `/search?q=${encodeURIComponent(q)}&glob=${encodeURIComponent(glob)}`
     );
+    if (seq !== searchSeq) return;
     searchResults.innerHTML = "";
     if (!data.matches.length) {
       searchResults.textContent = "no matches";
     } else {
+      const frag = document.createDocumentFragment();
       for (const m of data.matches) {
         const row = document.createElement("div");
         row.className = "hit";
@@ -507,25 +640,48 @@ async function runSearch() {
         b.textContent = `${m.path}:${m.line}`;
         row.append(b, document.createTextNode("  " + m.text.trim()));
         row.addEventListener("click", () => openFile(m.path, m.line));
-        searchResults.appendChild(row);
+        frag.appendChild(row);
       }
+      searchResults.appendChild(frag);
     }
     searchResults.classList.remove("hidden");
     setStatus(`${data.matches.length} match(es)`);
   } catch (err) {
-    setStatus(err.message, true);
+    if (seq === searchSeq) setStatus(err.message, true);
   }
 }
 
+const scheduleLiveSearch = debounce(runSearch, 250);
+
 // --- Stats Modal ----------------------------------------------------------
 
-async function openStatsModal() {
-  const modal = $("statsModal");
-  modal.showModal();
+let statsTimer = null;
+let statsLoadSeq = 0;
+
+function openStatsModal() {
+  $("statsModal").showModal();
+  $("statsBody").innerHTML = "Fetching workspace stats…";
+  loadStats();
+}
+
+// scheduleStatsRefresh reloads the stats while the modal is open, so it follows
+// workspace changes live. A burst of changes (many edits in a row) is debounced
+// into one request.
+function scheduleStatsRefresh() {
+  if (!$("statsModal").open) return;
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(loadStats, 500);
+}
+
+// loadStats fetches /stats and renders it in place, without the "Fetching…"
+// text, so a live refresh only changes the numbers. A response that arrives
+// after a newer request was started is dropped.
+async function loadStats() {
   const body = $("statsBody");
-  body.innerHTML = "Fetching workspace stats…";
+  const seq = ++statsLoadSeq;
   try {
     const st = await api("/stats");
+    if (seq !== statsLoadSeq || !$("statsModal").open) return;
     const num = (v) => Number(v) || 0;
     let extRows = "";
     for (const [ext, e] of Object.entries(st.byExtension || {})) {
@@ -558,6 +714,7 @@ async function openStatsModal() {
       </div>
     `;
   } catch (err) {
+    if (seq !== statsLoadSeq) return;
     body.innerHTML = `<span class="err-text">Failed to load stats: ${escapeHtml(err.message)}</span>`;
   }
 }
@@ -602,7 +759,7 @@ async function executeSearchReplace(dryRun) {
     if (!dryRun) {
       await loadTree();
       if (state.currentPath) {
-        await openFile(state.currentPath);
+        await openFile(state.currentPath, null, { force: true, preserveScroll: true });
       }
     }
   } catch (err) {
@@ -628,78 +785,115 @@ function procStatus(p) {
   return "exited";
 }
 
+function buildProcItem(p) {
+  const li = document.createElement("li");
+  li.className = "proc-item";
+  li.dataset.procName = p.name;
+  li.tabIndex = 0;
+  li.addEventListener("click", () => openProcLogs(p.name));
+  li.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") {
+      ev.preventDefault();
+      openProcLogs(p.name);
+    }
+  });
+
+  const dot = document.createElement("span");
+  dot.className = "proc-dot";
+
+  const meta = document.createElement("span");
+  meta.className = "proc-meta";
+  const name = document.createElement("div");
+  name.className = "proc-name";
+  name.textContent = p.name;
+  const sub = document.createElement("div");
+  sub.className = "proc-sub";
+  meta.append(name, sub);
+
+  const stop = document.createElement("button");
+  stop.className = "proc-stop";
+  stop.textContent = "stop";
+  stop.addEventListener("click", async (ev) => {
+    ev.stopPropagation();
+    stop.disabled = true;
+    try {
+      await api("/processes/" + encodeURIComponent(p.name) + "/stop", {
+        method: "POST",
+        body: { wait: false },
+      });
+      setStatus("stopping " + p.name);
+    } catch (err) {
+      setStatus("stop " + p.name + ": " + err.message, true);
+    }
+    loadProcesses();
+  });
+
+  const restart = document.createElement("button");
+  restart.className = "proc-restart";
+  restart.textContent = "restart";
+  restart.title = "Restart " + p.name;
+  restart.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    restartProcess(p.name, restart);
+  });
+
+  li.append(dot, meta, restart, stop);
+  updateProcItem(li, p);
+  return li;
+}
+
+function updateProcItem(li, p) {
+  const status = procStatus(p);
+  li.classList.toggle("active", procLogs.name === p.name);
+  li.title = (p.argv || []).join(" ") + (p.dir ? "\ncwd: " + p.dir : "") + "\nclick to view logs";
+  const dot = li.querySelector(".proc-dot");
+  if (dot) dot.className = "proc-dot " + status;
+  const sub = li.querySelector(".proc-sub");
+  if (sub) {
+    const pid = p.running ? "pid " + p.pid : "exit " + p.exitCode;
+    sub.textContent = status + " · " + pid + " · " + formatProcDuration(p.durationMs);
+  }
+  const stop = li.querySelector(".proc-stop");
+  if (stop) stop.disabled = !p.running;
+}
+
 async function loadProcesses() {
   const list = $("procList");
   if (!list) return;
   try {
     const data = await api("/processes");
     const procs = data.processes || [];
-    list.innerHTML = "";
     if (procs.length === 0) {
+      list.innerHTML = "";
       const li = document.createElement("li");
       li.className = "proc-empty";
       li.textContent = "no background processes";
       list.appendChild(li);
       return;
     }
-    for (const p of procs) {
-      const status = procStatus(p);
-      const li = document.createElement("li");
-      li.className = "proc-item" + (procLogs.name === p.name ? " active" : "");
-      li.title = (p.argv || []).join(" ") + (p.dir ? "\ncwd: " + p.dir : "") + "\nclick to view logs";
-      li.tabIndex = 0;
-      li.addEventListener("click", () => openProcLogs(p.name));
-      li.addEventListener("keydown", (ev) => {
-        if (ev.key === "Enter" || ev.key === " ") {
-          ev.preventDefault();
-          openProcLogs(p.name);
-        }
-      });
-
-      const dot = document.createElement("span");
-      dot.className = "proc-dot " + status;
-
-      const meta = document.createElement("span");
-      meta.className = "proc-meta";
-      const name = document.createElement("div");
-      name.className = "proc-name";
-      name.textContent = p.name;
-      const sub = document.createElement("div");
-      sub.className = "proc-sub";
-      const pid = p.running ? "pid " + p.pid : "exit " + p.exitCode;
-      sub.textContent = status + " · " + pid + " · " + formatProcDuration(p.durationMs);
-      meta.append(name, sub);
-
-      const stop = document.createElement("button");
-      stop.className = "proc-stop";
-      stop.textContent = "stop";
-      stop.disabled = !p.running;
-      stop.addEventListener("click", async (ev) => {
-        ev.stopPropagation();
-        stop.disabled = true;
-        try {
-          await api("/processes/" + encodeURIComponent(p.name) + "/stop", {
-            method: "POST",
-            body: { wait: false },
-          });
-          setStatus("stopping " + p.name);
-        } catch (err) {
-          setStatus("stop " + p.name + ": " + err.message, true);
-        }
-        loadProcesses();
-      });
-
-      const restart = document.createElement("button");
-      restart.className = "proc-restart";
-      restart.textContent = "restart";
-      restart.title = "Restart " + p.name;
-      restart.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        restartProcess(p.name, restart);
-      });
-
-      li.append(dot, meta, restart, stop);
-      list.appendChild(li);
+    // Remove empty/unavailable placeholder if present.
+    for (const empty of list.querySelectorAll(".proc-empty")) {
+      empty.remove();
+    }
+    const existing = new Map();
+    for (const el of list.querySelectorAll(".proc-item")) {
+      existing.set(el.dataset.procName, el);
+    }
+    const seen = new Set();
+    procs.forEach((p, idx) => {
+      seen.add(p.name);
+      let li = existing.get(p.name);
+      if (li) {
+        updateProcItem(li, p);
+      } else {
+        li = buildProcItem(p);
+      }
+      if (list.children[idx] !== li) {
+        list.insertBefore(li, list.children[idx] || null);
+      }
+    });
+    for (const [name, el] of existing) {
+      if (!seen.has(name)) el.remove();
     }
   } catch (err) {
     // The panel is optional; keep the editor usable if the endpoint fails.
@@ -1073,7 +1267,7 @@ function renderWorkspaces() {
     actions.append(open, edit, del);
 
     li.append(main, actions);
-    list.append(li);
+    list.appendChild(li);
   }
 
   const warn = $("wsProcWarn");
@@ -1183,8 +1377,7 @@ async function switchWorkspace(name) {
       res = await api("/workspaces/" + encodeURIComponent(name) + "/activate", { method: "POST", body: { stopProcesses: true } });
     }
     // The old workspace's file is gone from view.
-    state.currentPath = null;
-    state.dirty = false;
+    clearExternalConflict();
     state.activeNode = null;
     state.expandedDirs.clear();
     editor.value = "";
@@ -1193,7 +1386,8 @@ async function switchWorkspace(name) {
     searchResults.innerHTML = "";
     $("uploadDir").value = "";
     if (procLogs.name) closeProcLogs();
-    updateUI();
+    state.currentPath = null;
+    state.dirty = false;
     await loadWorkspaces();
     renderWorkspaces();
     await loadTree();
@@ -1211,6 +1405,151 @@ async function switchWorkspace(name) {
   }
 }
 
+// --- Live Workspace Sync (SSE) --------------------------------------------
+
+let eventSource = null;
+
+function handleWorkspaceEvent(ev) {
+  if (!ev || typeof ev !== "object") return;
+  if (ev.op === "hello") {
+    if (state.lastSeq > 0 && ev.seq > state.lastSeq) {
+      scheduleTreeRefresh();
+      scheduleStatsRefresh();
+      if (state.currentPath) checkActiveFileAfterEvent("modified", state.currentPath);
+    }
+    state.lastSeq = ev.seq || state.lastSeq;
+    return;
+  }
+  if (typeof ev.seq === "number") {
+    state.lastSeq = ev.seq;
+  }
+  scheduleStatsRefresh();
+
+  // Ignore echo of our own just-completed save.
+  if (
+    ev.op === "write" &&
+    ev.path === state.lastSelfWritePath &&
+    Date.now() - state.lastSelfWriteAt < 1500
+  ) {
+    state.lastSelfWritePath = null;
+    scheduleTreeRefresh();
+    return;
+  }
+
+  if (ev.op === "switch") {
+    clearExternalConflict();
+    state.expandedDirs.clear();
+    state.activeNode = null;
+    if (state.currentPath) {
+      state.currentPath = null;
+      state.dirty = false;
+      editor.value = "";
+    }
+    loadWorkspaces().catch(() => {});
+    scheduleTreeRefresh();
+    if (!$("procPanel").classList.contains("hidden")) loadProcesses();
+    setStatus("workspace switched externally");
+    return;
+  }
+
+  if (ev.op === "rename" && ev.from) {
+    remapExpandedDirs(ev.from, ev.path);
+    if (state.currentPath === ev.from) {
+      state.currentPath = ev.path;
+      setStatus("renamed externally to " + ev.path);
+    } else if (state.currentPath && state.currentPath.startsWith(ev.from + "/")) {
+      state.currentPath = ev.path + state.currentPath.slice(ev.from.length);
+    }
+    scheduleTreeRefresh();
+    return;
+  }
+
+  if (ev.op === "delete" && ev.path) {
+    pruneExpandedDirs(ev.path, true);
+    if (
+      state.currentPath === ev.path ||
+      (state.currentPath && state.currentPath.startsWith(ev.path + "/"))
+    ) {
+      if (state.dirty) {
+        showExternalConflict(`"${state.currentPath}" was deleted on disk. Save to recreate or discard.`);
+      } else {
+        clearExternalConflict();
+        editor.value = "";
+        syntaxBanner.classList.add("hidden");
+        const removed = state.currentPath;
+        state.currentPath = null;
+        state.dirty = false;
+        setStatus(`"${removed}" was deleted externally`);
+      }
+    }
+    scheduleTreeRefresh();
+    return;
+  }
+
+  if (ev.op === "write" && ev.path && ev.path === state.currentPath) {
+    checkActiveFileAfterEvent("modified", ev.path);
+  }
+  scheduleTreeRefresh();
+}
+
+async function checkActiveFileAfterEvent(kind, path) {
+  if (!state.currentPath || state.currentPath !== path) return;
+  if (state.dirty) {
+    showExternalConflict(`"${path}" was ${kind} on disk while you have unsaved edits.`);
+    return;
+  }
+  try {
+    const data = await api("/file?path=" + encodeURIComponent(path));
+    if (state.currentPath !== path || state.dirty) return;
+    if (data.content === editor.value) return;
+    const prevScroll = editor.scrollTop;
+    const prevStart = editor.selectionStart;
+    const prevEnd = editor.selectionEnd;
+    editor.value = data.content;
+    clearExternalConflict();
+    updateUI();
+    const maxPos = editor.value.length;
+    editor.setSelectionRange(Math.min(prevStart, maxPos), Math.min(prevEnd, maxPos));
+    editor.scrollTop = prevScroll;
+    lineNumbers.scrollTop = prevScroll;
+    updateCursor();
+    setStatus(`synced external update (${data.totalLines} lines)`);
+  } catch (err) {
+    if (err.status === 404) {
+      showExternalConflict(`"${path}" is no longer available on disk.`);
+    }
+  }
+}
+
+function connectWorkspaceEvents() {
+  if (typeof EventSource === "undefined") return;
+  if (eventSource) {
+    eventSource.close();
+    eventSource = null;
+  }
+  state.sseState = "connecting";
+  const es = new EventSource("/api/events");
+  eventSource = es;
+
+  es.onopen = () => {
+    state.sseState = "connected";
+  };
+
+  es.onmessage = (msg) => {
+    state.sseState = "connected";
+    if (!msg.data) return;
+    try {
+      handleWorkspaceEvent(JSON.parse(msg.data));
+    } catch (_) {
+      // Ignore malformed frames.
+    }
+  };
+
+  es.onerror = () => {
+    state.sseState = "reconnecting";
+  };
+}
+
 // --- Wiring ---------------------------------------------------------------
 
 $("btnSidebar").addEventListener("click", toggleSidebar);
@@ -1225,6 +1564,17 @@ document.addEventListener("keydown", (ev) => {
     toggleSidebar();
   }
 });
+
+if ($("btnExternalReload")) {
+  $("btnExternalReload").addEventListener("click", () => {
+    if (state.currentPath) {
+      openFile(state.currentPath, null, { force: true, preserveScroll: true });
+    }
+  });
+}
+if ($("btnExternalDismiss")) {
+  $("btnExternalDismiss").addEventListener("click", clearExternalConflict);
+}
 
 // --- Settings Modal ----------------------------------------------------------
 
@@ -1306,16 +1656,12 @@ editor.addEventListener("keydown", (ev) => {
       const linePrefix = editor.value.slice(lineStart, lineStart + 2);
       const removeLen = linePrefix === "  " ? 2 : (editor.value[lineStart] === " " || editor.value[lineStart] === "\t" ? 1 : 0);
       if (removeLen > 0) {
-        editor.value = editor.value.slice(0, lineStart) + editor.value.slice(lineStart + removeLen);
-        editor.selectionStart = Math.max(lineStart, start - removeLen);
-        editor.selectionEnd = Math.max(lineStart, end - removeLen);
-        markDirty();
+        insertEditorText("", lineStart, lineStart + removeLen);
+        editor.setSelectionRange(Math.max(lineStart, start - removeLen), Math.max(lineStart, end - removeLen));
       }
       return;
     }
-    editor.value = editor.value.slice(0, start) + "  " + editor.value.slice(end);
-    editor.selectionStart = editor.selectionEnd = start + 2;
-    markDirty();
+    insertEditorText("  ", start, end);
     return;
   }
   if (ev.key === "Enter") {
@@ -1328,9 +1674,7 @@ editor.addEventListener("keydown", (ev) => {
     const indent = indentMatch ? indentMatch[0] : "";
     if (indent.length > 0) {
       ev.preventDefault();
-      editor.value = editor.value.slice(0, start) + "\n" + indent + editor.value.slice(end);
-      editor.selectionStart = editor.selectionEnd = start + 1 + indent.length;
-      markDirty();
+      insertEditorText("\n" + indent, start, end);
     }
   }
 });
@@ -1394,16 +1738,29 @@ $("btnProcLogsRestart").addEventListener("click", () => { if (procLogs.name) res
 $("btnProcLogsClear").addEventListener("click", () => { $("procLogsOutput").textContent = ""; procLogs.lines = 0; });
 
 $("searchInput").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") runSearch();
+  if (ev.key === "Enter") {
+    scheduleLiveSearch.cancel();
+    runSearch();
+  }
 });
 $("searchInput").addEventListener("input", () => {
   if (!$("searchInput").value.trim()) {
+    scheduleLiveSearch.cancel();
+    searchSeq++;
     searchResults.classList.add("hidden");
     searchResults.innerHTML = "";
+    return;
+  }
+  scheduleLiveSearch();
+});
+$("globInput").addEventListener("input", () => {
+  if ($("searchInput").value.trim()) {
+    scheduleLiveSearch();
   }
 });
 
 window.addEventListener("beforeunload", (ev) => {
+  if (eventSource) eventSource.close();
   if (state.dirty) {
     ev.preventDefault();
     ev.returnValue = "";
@@ -1424,6 +1781,7 @@ function showVersion(info) {
 
 (async function init() {
   updateUI();
+  connectWorkspaceEvents();
   try {
     const info = await api("/info");
     $("rootPath").textContent = info.root;

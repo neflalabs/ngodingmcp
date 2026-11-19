@@ -38,6 +38,7 @@ type Workspace struct {
 	// gate is held for reading by every tool call or API request (Hold) and
 	// for writing while the workspace is switched (Switch).
 	gate sync.RWMutex
+	hub  changeHub
 }
 
 // state is the immutable root and settings of one workspace. A switch

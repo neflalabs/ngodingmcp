@@ -100,5 +100,6 @@ func (w *Workspace) Switch(ctx context.Context, s Settings, during func() error)
 		}
 	}
 	w.st.Store(&state{root: s.Root, maxRead: normalizeMaxRead(s.MaxRead), allowSensitive: s.AllowSensitive})
+	w.hub.notify("switch", "", "")
 	return nil
 }

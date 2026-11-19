@@ -39,7 +39,7 @@
       <button id="btnRefresh" title="Refresh tree">⟳</button>
     </div>
     <div class="search">
-      <input id="searchInput" placeholder="Search contents, Enter…" autocomplete="off">
+      <input id="searchInput" placeholder="Search contents…" autocomplete="off">
       <input id="globInput" placeholder="glob filter (e.g. *.go)" autocomplete="off">
     </div>
     <div id="searchResults" class="search-results hidden"></div>
@@ -66,12 +66,20 @@
         <button id="btnSave" class="primary" disabled title="Save (Ctrl+S)">save<span class="btn-label"> (Ctrl+S)</span></button>
       </div>
     </div>
+    <div id="externalChangeBanner" class="external-banner hidden" role="alert">
+      <span id="externalChangeMsg">File modified on disk.</span>
+      <div class="external-banner-actions">
+        <button type="button" id="btnExternalReload" class="primary">Reload</button>
+        <button type="button" id="btnExternalDismiss" class="ghost">Keep mine</button>
+      </div>
+    </div>
     <div class="editor-container">
       <div id="lineNumbers" class="line-numbers">1</div>
       <textarea id="editor" spellcheck="false" placeholder="Select a file on the left to start editing…" disabled></textarea>
     </div>
     <div id="syntaxBanner" class="syntax-banner hidden"></div>
     <footer class="statusbar">
+      <span id="liveDot" class="live-dot" title="Connecting live sync…"></span>
       <span id="status">ready</span>
       <span id="tokenEstimate">~0 tokens</span>
       <span id="cursor">Ln 1, Col 1</span>

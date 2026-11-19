@@ -98,7 +98,9 @@ func (w *Workspace) WriteFile(rel, content string) (string, int, error) {
 	if err := os.Rename(tmpName, full); err != nil {
 		return "", 0, err
 	}
-	return w.relPath(full), len(content), nil
+	relp := w.relPath(full)
+	w.hub.notify("write", relp, "")
+	return relp, len(content), nil
 }
 
 // ReplaceText replaces occurrences of old with new inside rel.
