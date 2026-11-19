@@ -20,9 +20,20 @@ Saat aktif, policy memakai daftar **predefined di kode** (`internal/runner/polic
 | `go test` | `bun test` |
 | `go vet` | `bun run build` |
 | `gofmt -l` | `bun run dev` |
+| `staticcheck` | `ngodingmcp restart` |
 | `git status` | |
 | `git diff` | |
 | `git log` | |
+
+`staticcheck` harus sudah ter-install di `PATH` mesin server (misalnya
+`go install honnef.co/go/tools/cmd/staticcheck@v0.8.2`); flag `-debug.*`-nya
+ditolak karena bisa menulis file ke path mana saja.
+
+`ngodingmcp restart` tidak dijalankan sebagai program. Hasil tool dikirim dulu,
+lalu sekitar satu detik kemudian server menjalankan
+`systemctl --user --no-block restart ngodingmcp.service`. Ini hanya jalan kalau
+server berjalan sebagai service (`ngodingmcp -d`); server yang dijalankan manual
+di terminal menolak. `start_process` juga menolak command ini.
 
 Override hanya kalau perlu (advanced). Kalau salah satu override diisi, daftar
 predefined tidak dipakai:

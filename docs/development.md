@@ -55,7 +55,15 @@ Folder `TaskDev/` (catatan pengembangan) dan `dist/` di-gitignore.
 
 ```sh
 go test ./...        # atau: make test
+make check           # cek yang sama dengan CI: gofmt, go vet, staticcheck, go test -race
 ```
+
+`make check` menjalankan staticcheck lewat `go run` dengan versi yang dikunci
+(`STATICCHECK_VERSION` di Makefile, sama dengan `.github/workflows/ci.yml`),
+jadi tidak perlu install staticcheck dan `go.mod` tidak berubah. Kalau versinya
+dinaikkan, ubah di kedua tempat.
+
+Build, versi, dan `make clean`: lihat [versioning.md](versioning.md).
 
 Nama, deskripsi, anotasi, dan schema semua tool dikunci oleh `TestToolContract`
 (`internal/mcpserver/testdata/tools.golden.json`, 43 tool dengan semua opt-in
