@@ -27,8 +27,9 @@
 - `/mcp` juga mendukung OAuth 2.1 sesuai MCP spec: resource server + authorization
   server embedded. Access token ES256 terikat audience ke server ini (RFC 8707),
   PKCE S256 wajib untuk code exchange, refresh token rotasi setiap dipakai.
-  Refresh token hanya di memori; restart server = consent ulang. Detail:
-  [oauth.md](oauth.md).
+  Refresh token disimpan di `oauth.json` hanya sebagai hash SHA-256 (file
+  `0600`), jadi restart server tidak memaksa consent ulang dan isi file tidak
+  bisa dipakai untuk refresh. Detail: [oauth.md](oauth.md).
 - OAuth tetap menggunakan token statis sebagai jalur autentikasi tambahan.
 - Token dikirim sebagai header biasa. Jalankan di `localhost`, atau taruh di
   belakang reverse proxy TLS kalau diakses dari jaringan lain (lihat `trusted-proxy`

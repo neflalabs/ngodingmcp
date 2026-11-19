@@ -88,8 +88,8 @@ Lokasi: `~/.config/ngodingmcp/config.json`.
   `allowSensitive` yang langsung berlaku; environment dan flag tetap menimpa file saat start. Pola non-interaktif tetap
   tersedia: `ngodingmcp serve --public-url ... --trusted-proxy ... --oauth=false`,
   atau file env service.
-- Signing key dan client OAuth terdaftar disimpan di `~/.config/ngodingmcp/oauth.json`
-  (bukan di `config.json`). Lihat [oauth.md](oauth.md).
+- Signing key, client OAuth terdaftar, dan hash refresh token disimpan di
+  `~/.config/ngodingmcp/oauth.json` (bukan di `config.json`). Lihat [oauth.md](oauth.md).
 - Dipakai lagi pada run berikutnya, termasuk `ngodingmcp serve` tanpa flag.
 - Untuk run policy, config hanya menyimpan flag enable (`{"run": {"enabled": true}}`);
   allowlist tidak bisa diubah dari sini.

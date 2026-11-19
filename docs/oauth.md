@@ -57,9 +57,22 @@ Cloudflare: isi `-trusted-proxy` dengan range IP Cloudflare, atau pakai `-public
 
 ## File `~/.config/ngodingmcp/oauth.json`
 
-Berisi signing key ES256 dan daftar client terdaftar (DCR). Mode direktori `0700`, file `0600`.
-Refresh token **tidak** disimpan di disk — hanya di memori proses, jadi restart service memaksa
-client melakukan authorize ulang. Access token selalu bisa diverifikasi lewat `GET /oauth/jwks.json`.
+Berisi signing key ES256, daftar client terdaftar (DCR), dan refresh token. Mode direktori `0700`,
+file `0600`, ditulis atomik (file sementara lalu rename).
+
+- Refresh token disimpan **hanya sebagai hash SHA-256** (`refreshTokens`), bersama client, scope,
+  family, dan waktu kedaluwarsanya. Token mentahnya tidak pernah ditulis ke disk, jadi isi file ini
+  tidak bisa dipakai untuk refresh. Restart service **tidak** memaksa client authorize ulang.
+- Token yang sudah dirotasi juga disimpan sebagai hash (`consumedRefreshTokens`), supaya token lama
+  yang dipakai ulang setelah restart tetap mencabut seluruh keluarganya.
+- File ditulis ulang setiap refresh token diterbitkan, dirotasi, atau keluarganya dicabut. Entri yang
+  sudah kedaluwarsa dibuang saat file dibaca dan saat ditulis.
+- Authorization code dan token CSRF tetap hanya di memori (umurnya cuma menit).
+- Versi file sekarang `2`. File versi `1` dari ngodingmcp lama tetap terbaca (dianggap tanpa refresh
+  token) dan otomatis naik ke versi `2` saat disimpan berikutnya. Binary lama tidak bisa membaca file
+  versi `2`.
+
+Access token selalu bisa diverifikasi lewat `GET /oauth/jwks.json`.
 
 ## Batasan
 
@@ -71,8 +84,9 @@ client melakukan authorize ulang. Access token selalu bisa diverifikasi lewat `G
   dengan pesan penjelas. `last_used_at` diperbarui saat client berhasil menukar
   token dan disimpan di `oauth.json`.
 - Tidak ada endpoint revoke (RFC 7009). Refresh token dirotasi setiap dipakai; token lama yang
-  dipakai ulang mencabut seluruh keluarga token (RFC 6819 §5.2.2.3). Refresh token bisa juga dicabut
-  dengan restart server.
+  dipakai ulang mencabut seluruh keluarga token (RFC 6819 §5.2.2.3). Restart server **tidak** lagi
+  mencabut refresh token; untuk mencabut semuanya, hentikan server lalu hapus `oauth.json` (client
+  terdaftar dan signing key ikut terhapus, jadi semua client perlu menyambung ulang).
 - Hanya client publik (`token_endpoint_auth_method: none`). Tidak mendukung client secret.
 - Audience token selalu resource milik server ini (origin issuer atau `…/mcp`); `resource` lain
   ditolak dengan `invalid_target`. Protected Resource Metadata melaporkan `resource` = `https://<base>/mcp`.

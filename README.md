@@ -112,8 +112,9 @@ proxy dipercaya hanya untuk menurunkan scheme).
 
 - Setelan TUI dan Web UI disimpan di `~/.config/ngodingmcp/config.json`
   (di luar workspace, mode `0600`), termasuk daftar workspace tersimpan.
-- Signing key dan daftar client OAuth tersimpan di `~/.config/ngodingmcp/oauth.json`
-  (mode `0600`; refresh token tidak pernah ditulis ke disk).
+- Signing key, daftar client OAuth, dan refresh token tersimpan di
+  `~/.config/ngodingmcp/oauth.json` (mode `0600`; refresh token hanya disimpan
+  sebagai hash, token mentahnya tidak pernah ditulis ke disk).
 - Service systemd membaca `~/.config/ngodingmcp/env` (format `KEY=value`).
 - Urutan prioritas: **flag > environment > config.json**.
 
