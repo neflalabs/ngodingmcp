@@ -22,10 +22,15 @@ const maxTargetLen = 60
 
 // activityMiddleware logs one concise line per tools/call, for example
 // "edit_file main.go ✓ 3ms" or "run_command go test ./... ✗ exit 1 1.2s".
+// The line carries a compact token annotation for what the result cost,
+// for example " ~8.3k tok (ct 4.4k + st 3.8k)"; exact byte and token counts
+// for the `content` and `structuredContent` payloads are also attached as
+// slog attributes.
 //
 // Only the tool name, its main target (a path, a command or a process name),
-// the outcome and the duration are logged. File contents, edit text,
-// environment values, tokens and error messages are never logged.
+// the outcome, the duration and the token annotation are logged. File
+// contents, edit text, environment values, tokens and error messages are
+// never logged.
 func activityMiddleware(logger *slog.Logger) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
@@ -42,10 +47,20 @@ func activityMiddleware(logger *slog.Logger) mcp.Middleware {
 			}
 			ok, detail := activityOutcome(res, err)
 			line := ActivityLine(name, target, ok, detail, time.Since(started))
+			attrs := []any{}
+			if size, ok := measureResult(res); ok {
+				line += resultSizeSuffix(size)
+				attrs = append(attrs,
+					"content_bytes", size.contentBytes,
+					"content_tokens", size.contentTokens,
+					"structured_bytes", size.structuredBytes,
+					"structured_tokens", size.structuredTokens,
+				)
+			}
 			if ok {
-				logger.Info(ActivityPrefix + line)
+				logger.Info(ActivityPrefix+line, attrs...)
 			} else {
-				logger.Warn(ActivityPrefix + line)
+				logger.Warn(ActivityPrefix+line, attrs...)
 			}
 			return res, err
 		}
@@ -102,6 +117,64 @@ func activityOutcome(res mcp.Result, err error) (bool, string) {
 		}
 	}
 	return true, ""
+}
+
+// resultSize summarises what one tool result costs in context tokens, kept
+// separate for the two payloads a client may forward to the model: the
+// `content` block (what the model reads) and `structuredContent` (the same
+// data as JSON, when the client passes both).
+type resultSize struct {
+	contentBytes     int64
+	contentTokens    int64
+	structuredBytes  int64
+	structuredTokens int64
+}
+
+// measureResult computes the result size. It reports false when res is not a
+// tool result (protocol-level error or a non-tool method).
+func measureResult(res mcp.Result) (resultSize, bool) {
+	var s resultSize
+	r, ok := res.(*mcp.CallToolResult)
+	if !ok || r == nil {
+		return s, false
+	}
+	if raw, err := json.Marshal(r.Content); err == nil {
+		s.contentBytes = int64(len(raw))
+		s.contentTokens = s.contentBytes / 4
+	}
+	if r.StructuredContent != nil {
+		if raw, err := json.Marshal(r.StructuredContent); err == nil {
+			s.structuredBytes = int64(len(raw))
+			s.structuredTokens = s.structuredBytes / 4
+		}
+	}
+	return s, true
+}
+
+// resultSizeSuffix renders the compact token annotation appended to the
+// activity line, for example " ~8.3k tok (ct 4.4k + st 3.8k)". Zero-cost
+// results get no suffix. Exact bytes and tokens are also logged as slog
+// attributes (content_bytes, content_tokens, structured_bytes,
+// structured_tokens) for log analysis.
+func resultSizeSuffix(s resultSize) string {
+	total := s.contentTokens + s.structuredTokens
+	if total <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" ~%s tok (ct %s + st %s)", humanCount(total), humanCount(s.contentTokens), humanCount(s.structuredTokens))
+}
+
+// humanCount compacts a count with one decimal and a k/M suffix; values
+// below 1000 are printed exactly.
+func humanCount(n int64) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprintf("%d", n)
+	case n < 1_000_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	default:
+		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)
+	}
 }
 
 // hasCommand limits the exit-code rule to run_command results (they carry
