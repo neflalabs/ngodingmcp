@@ -59,6 +59,10 @@ type Settings struct {
 	PublicURL      string
 	OAuth          bool
 	TrustedProxies string // comma-separated
+
+	// DisableTools lists core tool modules to leave out (comma-separated);
+	// the names are validated where the server is built (app.New).
+	DisableTools string
 }
 
 // Resolve reads the environment on top of saved. Malformed values are
@@ -100,6 +104,8 @@ func Resolve(saved Config) (Settings, error) {
 		PublicURL:      EnvString("NGODINGMCP_PUBLIC_URL", saved.PublicURL),
 		OAuth:          boolean("NGODINGMCP_OAUTH", oauth),
 		TrustedProxies: EnvString("NGODINGMCP_TRUSTED_PROXIES", FirstNonEmpty(strings.Join(saved.TrustedProxies, ","), DefaultTrustedProxies)),
+
+		DisableTools: EnvString("NGODINGMCP_DISABLE_TOOLS", strings.Join(saved.DisableTools, ",")),
 	}
 	var err error
 	s.RunTimeout, err = EnvDuration("NGODINGMCP_RUN_TIMEOUT", DefaultRunTimeout)

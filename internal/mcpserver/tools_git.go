@@ -23,12 +23,17 @@ import (
 	"ngodingmcp/internal/workspace"
 )
 
-// addGitTools registers the read-only and the write git tools.
-func addGitTools(s *mcp.Server, ws *workspace.Workspace) {
+// addGitTools registers the read-only git tools, plus the write and remote
+// tools unless their module is disabled.
+func addGitTools(s *mcp.Server, ws *workspace.Workspace, on moduleSet) {
 	addGitReadTools(s, gitread.New(ws))
 	gw := gitwrite.New(ws)
-	addGitWriteTools(s, gw)
-	addGitRemoteTools(s, gw)
+	if on.enabled(ModuleGitWrite) {
+		addGitWriteTools(s, gw)
+	}
+	if on.enabled(ModuleGitRemote) {
+		addGitRemoteTools(s, gw)
+	}
 }
 
 // ===========================================================================

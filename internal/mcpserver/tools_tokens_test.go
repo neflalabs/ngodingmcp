@@ -84,7 +84,7 @@ func listAllTools(t *testing.T) []*mcp.Tool {
 // TestToolsListTokens measures the fixed per-turn cost of the tools/list
 // payload (compact JSON, as sent on the wire rather than pretty-printed) and
 // prints a per-tool breakdown, largest first. It never fails on size; the
-// regression guard lives in Fase 1.5 of the token-efficiency plan.
+// regression guard is TestToolsListBudget.
 //
 // Run it with:
 //
@@ -132,22 +132,53 @@ func TestToolsListTokens(t *testing.T) {
 	}
 	t.Logf("%-24s %8d %8d\n", "sum of tool objects", sumBytes, estTokens(sumBytes))
 	t.Logf("%-24s %8d %8d\n", "tools/list envelope", len(payload)-sumBytes, estTokens(len(payload)-sumBytes))
+	logFieldBreakdown(t, tools)
 	if len(tools) == 0 {
 		t.Fatal("no tools listed")
 	}
 }
 
-// TestToolsListTokensCore measures the default "coding ringan" surface —
-// core tools only, without the opt-in runner/process/download tools — for
-// comparison with the all-enabled contract configuration. It never fails on
-// size; see TestToolsListTokens for the run instructions.
-func TestToolsListTokensCore(t *testing.T) {
+// logFieldBreakdown prints how many bytes of the tools/list payload each tool
+// field accounts for (description, inputSchema, outputSchema, annotations),
+// so a size change can be attributed to the part that caused it.
+func logFieldBreakdown(t *testing.T, tools []*mcp.Tool) {
+	t.Helper()
+	fields := []string{"description", "inputSchema", "outputSchema", "annotations"}
+	sums := make(map[string]int, len(fields))
+	withOutput := 0
+	for _, tool := range tools {
+		raw, err := json.Marshal(tool)
+		if err != nil {
+			t.Fatalf("marshal %s: %v", tool.Name, err)
+		}
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("unmarshal %s: %v", tool.Name, err)
+		}
+		for _, f := range fields {
+			sums[f] += len(m[f])
+		}
+		if len(m["outputSchema"]) > 0 {
+			withOutput++
+		}
+	}
+	t.Logf("per field (bytes of the JSON value, ~tokens):\n")
+	for _, f := range fields {
+		t.Logf("  %-14s %8d %8d\n", f, sums[f], estTokens(sums[f]))
+	}
+	t.Logf("  tools with outputSchema: %d of %d\n", withOutput, len(tools))
+}
+
+// listCoreTools returns tools/list for a server with core tools only (no
+// runner, process or download tools), minus the disabled modules.
+func listCoreTools(t *testing.T, disabled ...mcpserver.Module) []*mcp.Tool {
+	t.Helper()
 	root := t.TempDir()
 	ws, err := workspace.New(root, 1<<20)
 	if err != nil {
 		t.Fatalf("workspace.New: %v", err)
 	}
-	s := mcpserver.New(ws, "test")
+	s := mcpserver.NewWithOptions(ws, "test", mcpserver.Options{Disabled: disabled})
 	ctx := context.Background()
 	serverT, clientT := mcp.NewInMemoryTransports()
 	if _, err := s.Connect(ctx, serverT, nil); err != nil {
@@ -164,11 +195,31 @@ func TestToolsListTokensCore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListTools: %v", err)
 	}
-	payload, err := json.Marshal(map[string]any{"tools": res.Tools})
+	return res.Tools
+}
+
+// toolsListBytes is the size of the compact tools/list result for tools.
+func toolsListBytes(t *testing.T, tools []*mcp.Tool) int {
+	t.Helper()
+	payload, err := json.Marshal(map[string]any{"tools": tools})
 	if err != nil {
 		t.Fatalf("marshal tools/list payload: %v", err)
 	}
-	t.Logf("core-only tools/list payload (compact): %d bytes, ~%d tokens, %d tools\n", len(payload), estTokens(len(payload)), len(res.Tools))
+	return len(payload)
+}
+
+// TestToolsListTokensCore measures the default "coding ringan" surface —
+// core tools only, without the opt-in runner/process/download tools — and
+// the smallest profile (every module disabled). It never fails on size;
+// TestToolsListBudget does.
+func TestToolsListTokensCore(t *testing.T) {
+	core := listCoreTools(t)
+	n := toolsListBytes(t, core)
+	t.Logf("core-only tools/list payload (compact): %d bytes, ~%d tokens, %d tools\n", n, estTokens(n), len(core))
+
+	minimal := listCoreTools(t, mcpserver.ModuleInspect, mcpserver.ModuleGitWrite, mcpserver.ModuleGitRemote)
+	n = toolsListBytes(t, minimal)
+	t.Logf("core, all modules disabled: %d bytes, ~%d tokens, %d tools\n", n, estTokens(n), len(minimal))
 }
 
 // TestToolResultSize measures the double payment a client may face when it

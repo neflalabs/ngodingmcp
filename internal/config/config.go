@@ -36,6 +36,9 @@ type Config struct {
 	// OAuth enables the embedded OAuth authorization server for /mcp.
 	// Absent (nil) means enabled.
 	OAuth *bool `json:"oauth,omitempty"`
+	// DisableTools names core tool modules left out of tools/list (inspect,
+	// git_write, git_remote). Empty means every module is on.
+	DisableTools []string `json:"disableTools,omitempty"`
 }
 
 // RunConfig is the persisted run_command switch. The allowed commands are

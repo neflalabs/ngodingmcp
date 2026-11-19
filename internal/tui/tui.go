@@ -271,6 +271,7 @@ func (m *Model) start() {
 		PublicURL:          m.settings.PublicURL,
 		OAuthDisabled:      !m.settings.OAuth,
 		TrustedProxies:     config.SplitList(m.settings.TrustedProxies),
+		DisableTools:       config.SplitList(m.settings.DisableTools),
 		Version:            m.version,
 		LogWriter:          m.logs,
 	})

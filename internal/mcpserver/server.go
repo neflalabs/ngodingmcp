@@ -38,6 +38,9 @@ type Options struct {
 	Processes *procman.Manager
 	// Downloader enables download_file when non-nil.
 	Downloader *fetch.Client
+	// Disabled switches core tool modules off (see Module); validate user
+	// input with ParseModules.
+	Disabled []Module
 	// Logger, when non-nil, receives one concise activity line per tool call
 	// (tool, target, ✓/✗, duration). Contents and secrets are never logged.
 	Logger *slog.Logger
@@ -62,12 +65,15 @@ func NewWithOptions(ws *workspace.Workspace, version string, opts Options) *mcp.
 		&mcp.ServerOptions{Instructions: instructions},
 	)
 
-	// Core tools: always registered (26 in total).
-	addFileTools(s, ws)    // read_file, write_file, list_files, file_info, mkdir_path, move_path, delete_path
-	addEditTools(s, ws)    // replace_text, edit_file, insert_text, delete_lines, replace_lines
-	addSearchTools(s, ws)  // search_text, search_and_replace
-	addInspectTools(s, ws) // workspace_stats, validate_syntax, count_tokens
-	addGitTools(s, ws)     // git_status, git_diff, git_log + git_init, git_add, git_unstage, git_commit, git_create_branch, git_switch_branch
+	// Core tools: registered unless their module is disabled (35 in total).
+	on := newModuleSet(opts.Disabled)
+	addFileTools(s, ws)   // read_file, write_file, list_files, file_info, mkdir_path, move_path, delete_path
+	addEditTools(s, ws)   // replace_text, edit_file, insert_text, delete_lines, replace_lines
+	addSearchTools(s, ws) // search_text, search_and_replace
+	if on.enabled(ModuleInspect) {
+		addInspectTools(s, ws) // workspace_stats, validate_syntax, count_tokens
+	}
+	addGitTools(s, ws, on) // git_status, git_diff, git_log + modules git_write and git_remote
 
 	// Opt-in tools: registered only when the matching option is set.
 	if opts.Runner != nil {

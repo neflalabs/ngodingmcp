@@ -19,6 +19,7 @@ import (
 	"ngodingmcp/internal/app"
 	"ngodingmcp/internal/buildinfo"
 	"ngodingmcp/internal/config"
+	"ngodingmcp/internal/mcpserver"
 	"ngodingmcp/internal/service"
 	"ngodingmcp/internal/tui"
 )
@@ -193,6 +194,8 @@ type serverOptions struct {
 	publicURL      string
 	oauth          bool
 	trustedProxies string
+	// Core tool modules left out of tools/list (comma-separated).
+	disableTools string
 }
 
 func parseServerFlags(args []string) (*serverOptions, error) {
@@ -228,6 +231,8 @@ func parseServerFlags(args []string) (*serverOptions, error) {
 	fs.StringVar(&opts.publicURL, "public-url", s.PublicURL, "external base URL of this server (e.g. \"https://mcp.example.com\"); used as the OAuth issuer/resource identifier")
 	fs.BoolVar(&opts.oauth, "oauth", s.OAuth, "enable the embedded OAuth authorization server for /mcp (static token still works)")
 	fs.StringVar(&opts.trustedProxies, "trusted-proxy", s.TrustedProxies, "comma-separated peers whose X-Forwarded-Proto header is honored when deriving the OAuth issuer behind a TLS-terminating proxy (default \"loopback\"); keywords: loopback, private, none; otherwise CIDR blocks or IPs")
+
+	fs.StringVar(&opts.disableTools, "disable-tools", s.DisableTools, "comma-separated core tool modules to leave out of tools/list: "+strings.Join(mcpserver.ModuleNames(), ", "))
 
 	if err := fs.Parse(args); err != nil {
 		return nil, err
@@ -294,6 +299,7 @@ func runServer(opts *serverOptions) error {
 		PublicURL:          opts.publicURL,
 		OAuthDisabled:      !opts.oauth,
 		TrustedProxies:     config.SplitList(opts.trustedProxies),
+		DisableTools:       config.SplitList(opts.disableTools),
 		Version:            buildinfo.Version(),
 		Logger:             logger,
 	})

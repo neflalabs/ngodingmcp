@@ -71,6 +71,9 @@ type Config struct {
 	// OAuthDisabled turns off the embedded OAuth authorization server. The
 	// static token still works; MCP clients must then authenticate with it.
 	OAuthDisabled bool
+	// DisableTools names core tool modules left out of tools/list (see
+	// mcpserver.ModuleNames). An unknown name fails New.
+	DisableTools []string
 	// LogWriter, when set, receives structured logs instead of stderr. Useful
 	// for embedding the server in a TUI.
 	LogWriter io.Writer
@@ -110,6 +113,11 @@ func New(cfg Config) (*Server, error) {
 		logger = slog.New(slog.NewTextHandler(cfg.LogWriter, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	} else if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	}
+
+	disabled, err := mcpserver.ParseModules(cfg.DisableTools)
+	if err != nil {
+		return nil, err
 	}
 
 	ws, err := workspace.New(cfg.Root, cfg.MaxFileBytes)
@@ -184,8 +192,12 @@ func New(cfg Config) (*Server, error) {
 		Runner:     cmdRunner,
 		Processes:  procMgr,
 		Downloader: downloader,
+		Disabled:   disabled,
 		Logger:     logger,
 	})
+	if len(disabled) > 0 {
+		logger.Info("tool modules disabled", "modules", cfg.DisableTools)
+	}
 	toolCount, err := mcpserver.CountTools(context.Background(), mcpServer)
 	if err != nil {
 		// Only the TUI summary uses the count; never fail startup over it.
