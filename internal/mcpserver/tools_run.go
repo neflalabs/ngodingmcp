@@ -16,15 +16,14 @@ import (
 )
 
 type runCommandArgs struct {
-	Command        string   `json:"command" jsonschema:"command to run; must match an allowlisted prefix such as \"go test\""`
+	Command        string   `json:"command" jsonschema:"allowlisted command, e.g. \"go test\""`
 	Args           []string `json:"args,omitempty" jsonschema:"additional arguments appended to the command"`
-	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"optional timeout in seconds, capped by the server maximum"`
+	TimeoutSeconds int      `json:"timeout_seconds,omitempty" jsonschema:"timeout in seconds (capped by the server)"`
 }
 
 func addRunCommand(s *mcp.Server, run *runner.Runner) {
-	desc := "Run an allowlisted command inside the workspace root without a shell. " +
-		allowlistDescription(run.Allowlist(), run.ExactAllowlist()) +
-		"Non-zero exit codes are reported in the result."
+	desc := "Run an allowlisted command in the workspace root (no shell); a non-zero exit is reported in the result. " +
+		allowlistDescription(run.Allowlist(), run.ExactAllowlist())
 	// The transcript in the text content is the whole result; a structured
 	// copy would repeat the command output. The exit status also goes into
 	// _meta so the activity log can flag a failing command.

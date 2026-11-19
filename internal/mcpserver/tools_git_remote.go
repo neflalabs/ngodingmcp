@@ -24,7 +24,7 @@ import (
 type gitRemoteArgs struct {
 	Action string `json:"action,omitempty" jsonschema:"list (default), add, set_url or remove"`
 	Name   string `json:"name,omitempty" jsonschema:"remote name for add, set_url and remove, e.g. origin"`
-	URL    string `json:"url,omitempty" jsonschema:"remote URL for add and set_url: https://host/owner/repo.git (no token in it) or ssh (git@host:owner/repo.git, ssh://git@host/owner/repo.git)"`
+	URL    string `json:"url,omitempty" jsonschema:"https://host/owner/repo.git or git@host:owner/repo.git"`
 }
 
 type gitRemoteOut struct {
@@ -34,7 +34,7 @@ type gitRemoteOut struct {
 
 type gitFetchArgs struct {
 	Remote string `json:"remote,omitempty" jsonschema:"remote to fetch (default: the current branch's upstream remote, else origin)"`
-	Prune  bool   `json:"prune,omitempty" jsonschema:"delete remote-tracking branches whose branch is gone on the remote"`
+	Prune  bool   `json:"prune,omitempty" jsonschema:"prune deleted remote branches"`
 }
 
 type gitPullArgs struct {
@@ -46,35 +46,35 @@ type gitPushArgs struct {
 	Remote       string `json:"remote,omitempty" jsonschema:"remote to push to (default: the branch's upstream remote, else origin)"`
 	Branch       string `json:"branch,omitempty" jsonschema:"local branch to push (default: the current branch)"`
 	RemoteBranch string `json:"remote_branch,omitempty" jsonschema:"branch name on the remote (default: the upstream branch, else the same name)"`
-	SetUpstream  bool   `json:"set_upstream,omitempty" jsonschema:"remember remote/remote_branch as the branch's upstream (use on the first push of a branch)"`
+	SetUpstream  bool   `json:"set_upstream,omitempty" jsonschema:"set the upstream (first push)"`
 }
 
 type gitMergeArgs struct {
-	Ref     string `json:"ref" jsonschema:"branch, remote branch (origin/main, after git_fetch) or commit to merge into the current branch"`
+	Ref     string `json:"ref" jsonschema:"branch, origin/<branch> or commit"`
 	FFOnly  bool   `json:"ff_only,omitempty" jsonschema:"only fast-forward; refuse to create a merge commit"`
-	Message string `json:"message,omitempty" jsonschema:"optional merge commit message"`
+	Message string `json:"message,omitempty" jsonschema:"merge commit message"`
 }
 
 type gitHubCreateRepoArgs struct {
 	Name        string `json:"name" jsonschema:"new repository name, e.g. ngodingmcp"`
-	Owner       string `json:"owner,omitempty" jsonschema:"optional organisation; default is the account gh is logged in as"`
+	Owner       string `json:"owner,omitempty" jsonschema:"organisation; default is the account gh is logged in as"`
 	Visibility  string `json:"visibility,omitempty" jsonschema:"private (default), public or internal"`
-	Description string `json:"description,omitempty" jsonschema:"optional one-line description"`
+	Description string `json:"description,omitempty" jsonschema:"one-line description"`
 	Remote      string `json:"remote,omitempty" jsonschema:"remote name to add for the new repository (default origin)"`
 	SkipRemote  bool   `json:"skip_remote,omitempty" jsonschema:"only create the repository on GitHub; do not add a remote"`
 }
 
 type gitHubRunsArgs struct {
-	Workflow string `json:"workflow,omitempty" jsonschema:"optional workflow file name or name, e.g. ci.yml"`
-	Branch   string `json:"branch,omitempty" jsonschema:"optional branch name to filter runs"`
-	Status   string `json:"status,omitempty" jsonschema:"optional status or conclusion filter: queued, in_progress, completed, success, failure, cancelled"`
+	Workflow string `json:"workflow,omitempty" jsonschema:"workflow file name or name, e.g. ci.yml"`
+	Branch   string `json:"branch,omitempty" jsonschema:"branch name to filter runs"`
+	Status   string `json:"status,omitempty" jsonschema:"status or conclusion, e.g. failure"`
 	Limit    int    `json:"limit,omitempty" jsonschema:"max runs to return (default 10, max 50)"`
 }
 
 type gitHubRunViewArgs struct {
-	RunID      int64  `json:"run_id,omitempty" jsonschema:"workflow run database ID from git_github_runs; omit or 0 to inspect the latest matching run"`
-	Workflow   string `json:"workflow,omitempty" jsonschema:"optional workflow file name or name when run_id is omitted"`
-	Branch     string `json:"branch,omitempty" jsonschema:"optional branch filter when run_id is omitted"`
+	RunID      int64  `json:"run_id,omitempty" jsonschema:"run ID from git_github_runs; 0 = latest"`
+	Workflow   string `json:"workflow,omitempty" jsonschema:"workflow file name or name when run_id is omitted"`
+	Branch     string `json:"branch,omitempty" jsonschema:"branch filter when run_id is omitted"`
 	FailedLogs bool   `json:"failed_logs,omitempty" jsonschema:"include logs from failed steps (--log-failed, truncated to last 32 KiB)"`
 }
 
@@ -95,10 +95,8 @@ func network(a *mcp.ToolAnnotations) *mcp.ToolAnnotations {
 
 func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
-		Name: "git_remote",
-		Description: "List, add, change (set_url) or remove git remotes. Only https and ssh URLs are accepted; local paths, file://, git://, http:// and ext:: are refused, " +
-			"and https URLs may not contain a username or token (credentials come from the user's git credential helper or ssh key). " +
-			"remove deletes only the remote and its remote-tracking branches, never local branches or commits.",
+		Name:        "git_remote",
+		Description: "List, add, set_url or remove remotes. Only https and ssh URLs, without credentials; remove never touches local branches.",
 		Annotations: destructive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitRemoteArgs) (*mcp.CallToolResult, gitRemoteOut, error) {
 		switch strings.ToLower(strings.TrimSpace(in.Action)) {
@@ -137,7 +135,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_fetch",
 		Description: "Download new commits and branches from a remote into remote-tracking branches (origin/main etc.). " +
-			"Local branches and workspace files are not changed. Never prompts for a password; see the hint in an auth error.",
+			"Local branches and files are unchanged.",
 		Annotations: network(additiveIdempotent()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitFetchArgs) (*mcp.CallToolResult, gitwrite.FetchResult, error) {
 		res, err := g.Fetch(ctx, gitwrite.FetchOptions{Remote: in.Remote, Prune: in.Prune})
@@ -153,7 +151,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_pull",
 		Description: "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed " +
-			"and the error says to use git_merge with the remote branch. No rebase. Refuses when uncommitted changes would be overwritten.",
+			"(use git_merge). No rebase.",
 		Annotations: network(additive()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitPullArgs) (*mcp.CallToolResult, gitwrite.PullResult, error) {
 		res, err := g.Pull(ctx, gitwrite.PullOptions{Remote: in.Remote, Branch: in.Branch})
@@ -182,7 +180,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_push",
 		Description: "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; " +
-			"a rejected non-fast-forward push is reported (pull or merge first). Use set_upstream=true on a branch's first push. Never prompts for a password.",
+			"set_upstream=true on a first push.",
 		Annotations: network(additive()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitPushArgs) (*mcp.CallToolResult, gitwrite.PushResult, error) {
 		res, err := g.Push(ctx, gitwrite.PushOptions{Remote: in.Remote, Branch: in.Branch, RemoteBranch: in.RemoteBranch, SetUpstream: in.SetUpstream})
@@ -202,7 +200,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_merge",
 		Description: "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). " +
-			"On a conflict the merge is aborted automatically, the branch is left unchanged and the conflicting files are listed. Never runs hooks.",
+			"A conflict aborts the merge and lists the files.",
 		Annotations: additive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitMergeArgs) (*mcp.CallToolResult, gitwrite.MergeResult, error) {
 		res, err := g.Merge(ctx, gitwrite.MergeOptions{Ref: in.Ref, FFOnly: in.FFOnly, Message: in.Message})
@@ -230,7 +228,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_github_create_repo",
 		Description: "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin " +
-			"(or the given remote). Nothing is pushed: call git_push with set_upstream=true next. Needs gh installed and logged in (`gh auth login`); never prompts.",
+			"(or the given remote). Nothing is pushed.",
 		Annotations: network(additive()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubCreateRepoArgs) (*mcp.CallToolResult, gitwrite.GitHubRepoResult, error) {
 		res, err := g.CreateGitHubRepo(ctx, gitwrite.GitHubRepoOptions{
@@ -247,7 +245,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addTextTool(s, &mcp.Tool{
 		Name: "git_github_runs",
 		Description: "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). " +
-			"Filter optionally by workflow (e.g. ci.yml), branch, or status/conclusion. Read-only; never prompts.",
+			"Optionally filtered.",
 		Annotations: network(readOnly()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunsArgs) (*mcp.CallToolResult, gitwrite.GitHubRunsResult, error) {
 		res, err := g.ListGitHubRuns(ctx, gitwrite.GitHubRunsOptions{
@@ -274,7 +272,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addTextTool(s, &mcp.Tool{
 		Name: "git_github_run_view",
 		Description: "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). " +
-			"Omit run_id (or pass 0) to inspect the latest run. Read-only; never prompts.",
+			"run_id 0 = latest.",
 		Annotations: network(readOnly()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunViewArgs) (*mcp.CallToolResult, gitwrite.GitHubRunDetail, error) {
 		res, err := g.ViewGitHubRun(ctx, gitwrite.GitHubRunViewOptions{
@@ -318,7 +316,7 @@ func addGitRemoteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name: "git_github_run_rerun",
 		Description: "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). " +
-			"Requires write access to the repository; never prompts.",
+			"Needs write access.",
 		Annotations: network(additive()),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitHubRunRerunArgs) (*mcp.CallToolResult, gitHubRunRerunOut, error) {
 		msg, err := g.RerunGitHubRun(ctx, in.RunID, in.FailedOnly)

@@ -16,10 +16,10 @@ import (
 )
 
 type downloadFileArgs struct {
-	SourceURL string `json:"source_url" jsonschema:"https URL of the file to download. A signed, short-lived artifact URL (for example one supplied by the MCP client) works here. Only public https hosts are reached."`
-	Path      string `json:"path" jsonschema:"destination file path, relative to the workspace root; parent directories are created"`
-	Overwrite bool   `json:"overwrite,omitempty" jsonschema:"replace the destination if it already exists (default false)"`
-	SHA256    string `json:"sha256,omitempty" jsonschema:"optional expected SHA-256 (64 hex characters); on mismatch nothing is written"`
+	SourceURL string `json:"source_url" jsonschema:"https URL; signed short-lived artifact URLs work"`
+	Path      string `json:"path" jsonschema:"destination path; parents are created"`
+	Overwrite bool   `json:"overwrite,omitempty" jsonschema:"replace an existing file"`
+	SHA256    string `json:"sha256,omitempty" jsonschema:"expected SHA-256 (hex)"`
 }
 
 type downloadFileOut struct {
@@ -40,11 +40,9 @@ func addDownloadFile(s *mcp.Server, ws *workspace.Workspace, dl *fetch.Client) {
 
 	addUntypedTool(s, &mcp.Tool{
 		Name: "download_file",
-		Description: "Download a file (text or binary, e.g. images) from an https URL and save it in the workspace. " +
-			"Use this for binary files that write_file cannot create. " +
-			"Limits: https only, " + hosts + ", max " + limit + ". Loopback and private network addresses are refused. " +
-			"The write is atomic: on any error (size limit, sha256 mismatch, existing file without overwrite) nothing is written. " +
-			"Returns the relative path, bytes written, sha256 and the reported content type.",
+		Description: "Download an https URL (text or binary, e.g. images) into the workspace. " +
+			"Limits: " + hosts + ", max " + limit + "; loopback and private addresses are refused. " +
+			"Atomic: nothing is written on any error.",
 		Annotations: annotations,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in downloadFileArgs) (*mcp.CallToolResult, downloadFileOut, error) {
 		if strings.TrimSpace(in.SourceURL) == "" {

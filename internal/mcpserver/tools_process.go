@@ -31,13 +31,13 @@ func addProcessTools(s *mcp.Server, mgr *procman.Manager) {
 // --- start_process ---------------------------------------------------------
 
 type startProcessArgs struct {
-	Command        string            `json:"command" jsonschema:"command to start; must match the same allowlist as run_command, e.g. \"bun run dev\""`
+	Command        string            `json:"command" jsonschema:"allowlisted command, e.g. \"bun run dev\""`
 	Args           []string          `json:"args,omitempty" jsonschema:"additional arguments appended to the command"`
-	Name           string            `json:"name,omitempty" jsonschema:"optional process name (letters, digits, _ or -); generated when empty"`
-	Cwd            string            `json:"cwd,omitempty" jsonschema:"optional working directory relative to the workspace root"`
-	Env            map[string]string `json:"env,omitempty" jsonschema:"optional environment variables; allowed keys: PORT, HOST, HOSTNAME, NODE_ENV, BUN_ENV, CI"`
-	WaitForLog     string            `json:"wait_for_log,omitempty" jsonschema:"optional regular expression that must match process output before start returns"`
-	WaitForPort    int               `json:"wait_for_port,omitempty" jsonschema:"optional TCP port that must accept connections before start returns"`
+	Name           string            `json:"name,omitempty" jsonschema:"process name (letters, digits, _ or -); generated when empty"`
+	Cwd            string            `json:"cwd,omitempty" jsonschema:"working directory relative to the workspace root"`
+	Env            map[string]string `json:"env,omitempty" jsonschema:"env vars; keys: PORT, HOST, HOSTNAME, NODE_ENV, BUN_ENV, CI"`
+	WaitForLog     string            `json:"wait_for_log,omitempty" jsonschema:"regex the output must match before start returns"`
+	WaitForPort    int               `json:"wait_for_port,omitempty" jsonschema:"TCP port that must accept connections before start returns"`
 	TimeoutSeconds int               `json:"timeout_seconds,omitempty" jsonschema:"readiness timeout in seconds (default 10, max 60)"`
 }
 
@@ -46,11 +46,10 @@ type startProcessOut struct {
 }
 
 func addStartProcess(s *mcp.Server, mgr *procman.Manager) {
-	desc := "Start an allowlisted command as a long-lived background process inside the workspace root. " +
-		"It keeps running across tool calls, so use process_logs to inspect output and stop_process to end it. " +
-		"Commands never go through a shell. "
+	desc := "Start an allowlisted command (no shell) as a background process that outlives the call; " +
+		"read it with process_logs, end it with stop_process. "
 	prefix, exact := mgr.Allowlist()
-	desc += allowlistDescription(prefix, exact)
+	desc += allowlistDescription(prefix, withoutRestart(exact))
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "start_process",
 		Description: desc,
@@ -98,7 +97,7 @@ type listProcessesOut struct {
 func addListProcesses(s *mcp.Server, mgr *procman.Manager) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_processes",
-		Description: "List background processes started in this session with their status, readiness, PID, exit code and runtime.",
+		Description: "List this session's background processes: status, readiness, PID, exit code, runtime.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ listProcessesArgs) (*mcp.CallToolResult, listProcessesOut, error) {
 		procs := mgr.List()
@@ -125,7 +124,7 @@ func addListProcesses(s *mcp.Server, mgr *procman.Manager) {
 type processLogsArgs struct {
 	Name       string `json:"name" jsonschema:"process name returned by start_process"`
 	TailLines  int    `json:"tail_lines,omitempty" jsonschema:"number of trailing lines when after_seq is 0 (default 100, max 1000)"`
-	AfterSeq   int64  `json:"after_seq,omitempty" jsonschema:"only return lines newer than this cursor; use nextSeq from the previous call"`
+	AfterSeq   int64  `json:"after_seq,omitempty" jsonschema:"nextSeq from the previous call"`
 	Timestamps *bool  `json:"timestamps,omitempty" jsonschema:"prefix each line with its time (default true)"`
 }
 
@@ -141,7 +140,7 @@ type processLogsOut struct {
 func addProcessLogs(s *mcp.Server, mgr *procman.Manager) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "process_logs",
-		Description: "Read process stdout/stderr. Use after_seq with nextSeq from the previous response to fetch only new lines; omit it for the last tail_lines. Output is bounded by a per-process ring buffer.",
+		Description: "Read process output: after_seq = the last nextSeq for new lines only, else the last tail_lines.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in processLogsArgs) (*mcp.CallToolResult, processLogsOut, error) {
 		info, logs, err := mgr.Logs(in.Name, in.TailLines, in.AfterSeq)
@@ -177,7 +176,7 @@ func addProcessLogs(s *mcp.Server, mgr *procman.Manager) {
 type stopProcessArgs struct {
 	Name           string `json:"name" jsonschema:"process name returned by start_process"`
 	TimeoutSeconds int    `json:"timeout_seconds,omitempty" jsonschema:"graceful shutdown grace period in seconds (default 5)"`
-	Wait           *bool  `json:"wait,omitempty" jsonschema:"wait for exit before returning (default true); false signals and returns immediately"`
+	Wait           *bool  `json:"wait,omitempty" jsonschema:"wait for exit (default true)"`
 }
 
 type stopProcessOut struct {
@@ -187,7 +186,7 @@ type stopProcessOut struct {
 func addStopProcess(s *mcp.Server, mgr *procman.Manager) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "stop_process",
-		Description: "Stop a background process and its children. Sends SIGTERM first and escalates to SIGKILL after the grace period. Set wait=false to return immediately.",
+		Description: "Stop a background process and its children (SIGTERM, then SIGKILL after the grace period).",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in stopProcessArgs) (*mcp.CallToolResult, stopProcessOut, error) {
 		wait := in.Wait == nil || *in.Wait
@@ -213,7 +212,7 @@ type restartProcessOut struct {
 func addRestartProcess(s *mcp.Server, mgr *procman.Manager) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "restart_process",
-		Description: "Stop a background process and start it again with the same command, working directory and environment.",
+		Description: "Restart a background process with the same command, cwd and env.",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in restartProcessArgs) (*mcp.CallToolResult, restartProcessOut, error) {
 		info, err := mgr.Restart(in.Name, seconds(in.TimeoutSeconds))
 		if err != nil {
@@ -236,7 +235,7 @@ type stopAllProcessesOut struct {
 func addStopAllProcesses(s *mcp.Server, mgr *procman.Manager) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "stop_all_processes",
-		Description: "Stop every running background process. Useful for resetting workspace state before starting again.",
+		Description: "Stop every background process.",
 		Annotations: destructive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in stopAllProcessesArgs) (*mcp.CallToolResult, stopAllProcessesOut, error) {
 		procs := mgr.StopAll(ctx, seconds(in.TimeoutSeconds))

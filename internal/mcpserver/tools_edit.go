@@ -27,9 +27,9 @@ func addEditTools(s *mcp.Server, ws *workspace.Workspace) {
 
 type replaceTextArgs struct {
 	Path       string `json:"path" jsonschema:"path to the file, relative to the workspace root"`
-	Old        string `json:"old" jsonschema:"exact text to find (must be unique unless replace_all is true)"`
+	Old        string `json:"old" jsonschema:"exact text; unique unless replace_all"`
 	New        string `json:"new" jsonschema:"replacement text"`
-	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"replace every occurrence instead of requiring a unique match"`
+	ReplaceAll bool   `json:"replace_all,omitempty" jsonschema:"replace every occurrence"`
 }
 
 type replaceTextOut struct {
@@ -40,7 +40,7 @@ type replaceTextOut struct {
 func addReplaceText(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_text",
-		Description: "Replace an exact substring in a file. By default the old text must occur exactly once; set replace_all to replace every occurrence.",
+		Description: "Replace an exact substring; it must occur once unless replace_all=true.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in replaceTextArgs) (*mcp.CallToolResult, replaceTextOut, error) {
 		p, n, err := ws.ReplaceText(in.Path, in.Old, in.New, in.ReplaceAll)
@@ -56,7 +56,7 @@ func addReplaceText(s *mcp.Server, ws *workspace.Workspace) {
 
 type editFileArgs struct {
 	Path   string           `json:"path" jsonschema:"path to the file, relative to the workspace root"`
-	Edits  []workspace.Edit `json:"edits" jsonschema:"exact-text replacements applied in order; each needs old and new, and old must be unique unless replace_all is true"`
+	Edits  []workspace.Edit `json:"edits" jsonschema:"edits in order; old must be unique unless replace_all"`
 	DryRun bool             `json:"dry_run,omitempty" jsonschema:"if true, only return the diff and leave the file untouched"`
 }
 
@@ -66,10 +66,8 @@ type editFileOut struct {
 
 func addEditFile(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
-		Name: "edit_file",
-		Description: "Apply several exact-text replacements to one file in a single atomic step and return a unified diff. " +
-			"Edits run in order and each sees the previous result. If any edit fails (old text missing or not unique), nothing is written. " +
-			"Use dry_run=true to preview the diff first.",
+		Name:        "edit_file",
+		Description: "Apply exact-text edits to one file in order, all or nothing, and return a unified diff. dry_run=true previews.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in editFileArgs) (*mcp.CallToolResult, editFileOut, error) {
 		res, err := ws.EditFile(in.Path, in.Edits, in.DryRun)
@@ -108,7 +106,7 @@ type insertTextOut struct {
 func addInsertText(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "insert_text",
-		Description: "Insert text before a 1-based line number. Use line = total_lines + 1 to append at the end.",
+		Description: "Insert text before a 1-based line; line = total_lines + 1 appends.",
 		Annotations: additive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in insertTextArgs) (*mcp.CallToolResult, insertTextOut, error) {
 		p, err := ws.InsertText(in.Path, in.Line, in.Text)
@@ -165,7 +163,7 @@ type replaceLinesOut struct {
 func addReplaceLines(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_lines",
-		Description: "Replace an inclusive range of 1-based lines with new content. Equivalent to delete_lines + insert_text in one atomic operation.",
+		Description: "Replace an inclusive range of 1-based lines with new content.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in replaceLinesArgs) (*mcp.CallToolResult, replaceLinesOut, error) {
 		p, total, err := ws.ReplaceLines(in.Path, in.From, in.To, in.NewContent)

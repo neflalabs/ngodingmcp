@@ -47,21 +47,21 @@ type gitOut struct {
 type gitStatusArgs struct{}
 
 type gitDiffArgs struct {
-	Path   string `json:"path,omitempty" jsonschema:"optional file or directory, relative to the workspace root"`
-	Staged bool   `json:"staged,omitempty" jsonschema:"show staged changes (index vs HEAD) instead of unstaged ones"`
+	Path   string `json:"path,omitempty" jsonschema:"file or directory, relative to the workspace root"`
+	Staged bool   `json:"staged,omitempty" jsonschema:"staged changes (index vs HEAD)"`
 	Stat   bool   `json:"stat,omitempty" jsonschema:"only show a per-file summary"`
-	Ref    string `json:"ref,omitempty" jsonschema:"optional commit or branch to compare against, e.g. HEAD~1"`
+	Ref    string `json:"ref,omitempty" jsonschema:"commit or branch to compare against, e.g. HEAD~1"`
 }
 
 type gitLogArgs struct {
-	Path  string `json:"path,omitempty" jsonschema:"optional file or directory, relative to the workspace root"`
+	Path  string `json:"path,omitempty" jsonschema:"file or directory, relative to the workspace root"`
 	Limit int    `json:"limit,omitempty" jsonschema:"number of commits to show (default 20, max 200)"`
 }
 
 func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "git_status",
-		Description: "Show `git status --short --branch` for the workspace. Read-only; sensitive files are hidden.",
+		Description: "`git status --short --branch`; sensitive files are hidden.",
 		Annotations: readOnly(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ gitStatusArgs) (*mcp.CallToolResult, gitOut, error) {
 		res, err := g.Status(ctx)
@@ -70,7 +70,7 @@ func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 
 	addTextTool(s, &mcp.Tool{
 		Name:        "git_diff",
-		Description: "Show `git diff` for the workspace or one path, optionally staged, as a summary (stat), or against a ref. Read-only; external diff and textconv programs never run, and sensitive files are excluded.",
+		Description: "`git diff` for the workspace or one path: staged, --stat or against a ref. Sensitive files are excluded.",
 		Annotations: readOnly(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitDiffArgs) (*mcp.CallToolResult, gitOut, error) {
 		res, err := g.Diff(ctx, gitread.DiffOptions{Path: in.Path, Staged: in.Staged, Stat: in.Stat, Ref: in.Ref})
@@ -79,7 +79,7 @@ func addGitReadTools(s *mcp.Server, g *gitread.Git) {
 
 	addTextTool(s, &mcp.Tool{
 		Name:        "git_log",
-		Description: "Show recent commits, one line each (hash, date, author, subject), for the workspace or one path. Read-only.",
+		Description: "Recent commits, one line each (hash, date, author, subject), optionally for one path.",
 		Annotations: readOnly(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitLogArgs) (*mcp.CallToolResult, gitOut, error) {
 		res, err := g.Log(ctx, gitread.LogOptions{Path: in.Path, Limit: in.Limit})
@@ -115,24 +115,24 @@ type gitInitArgs struct {
 }
 
 type gitAddArgs struct {
-	Paths []string `json:"paths,omitempty" jsonschema:"files or directories to stage, relative to the workspace root"`
+	Paths []string `json:"paths,omitempty" jsonschema:"paths to stage"`
 	All   bool     `json:"all,omitempty" jsonschema:"stage every change in the workspace when paths is empty"`
 }
 
 type gitUnstageArgs struct {
-	Paths []string `json:"paths,omitempty" jsonschema:"files or directories to unstage, relative to the workspace root"`
+	Paths []string `json:"paths,omitempty" jsonschema:"paths to unstage"`
 	All   bool     `json:"all,omitempty" jsonschema:"unstage everything when paths is empty"`
 }
 
 type gitCommitArgs struct {
 	Message     string `json:"message" jsonschema:"commit message: a subject line, optionally a blank line and a body"`
-	AuthorName  string `json:"author_name,omitempty" jsonschema:"optional author name; defaults to git config user.name"`
-	AuthorEmail string `json:"author_email,omitempty" jsonschema:"optional author email; defaults to git config user.email"`
+	AuthorName  string `json:"author_name,omitempty" jsonschema:"author name; defaults to git config user.name"`
+	AuthorEmail string `json:"author_email,omitempty" jsonschema:"author email; defaults to git config user.email"`
 }
 
 type gitCreateBranchArgs struct {
 	Name   string `json:"name" jsonschema:"new branch name, e.g. feature/git-write"`
-	Start  string `json:"start,omitempty" jsonschema:"optional commit or branch to start from (default HEAD)"`
+	Start  string `json:"start,omitempty" jsonschema:"commit or branch to start from (default HEAD)"`
 	Switch bool   `json:"switch,omitempty" jsonschema:"switch to the new branch after creating it"`
 }
 
@@ -164,16 +164,15 @@ func gitMessageResult(msg string, err error) (*mcp.CallToolResult, gitWriteOut, 
 func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_init",
-		Description: "Create a git repository at the workspace root (initial branch main unless given). Refuses when the workspace already is a repository.",
+		Description: "Create a git repository at the workspace root (branch main unless given).",
 		Annotations: additive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitInitArgs) (*mcp.CallToolResult, gitWriteOut, error) {
 		return gitMessageResult(g.Init(ctx, in.Branch))
 	})
 
 	addUntypedTool(s, &mcp.Tool{
-		Name: "git_add",
-		Description: "Stage new, modified and deleted files under the given paths, or the whole workspace with all=true. " +
-			"Ignored files are never staged (no force option) and sensitive files such as .env or private keys are skipped and listed.",
+		Name:        "git_add",
+		Description: "Stage paths, or everything with all=true. Ignored files are never staged; sensitive files (.env, keys) are skipped and listed.",
 		Annotations: additiveIdempotent(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitAddArgs) (*mcp.CallToolResult, gitwrite.AddResult, error) {
 		res, err := g.Add(ctx, gitwrite.AddOptions{Paths: in.Paths, All: in.All})
@@ -200,16 +199,15 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_unstage",
-		Description: "Remove paths (or everything with all=true) from the staging area. The files in the workspace are not changed.",
+		Description: "Unstage paths, or everything with all=true; workspace files are unchanged.",
 		Annotations: additiveIdempotent(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitUnstageArgs) (*mcp.CallToolResult, gitWriteOut, error) {
 		return gitMessageResult("unstaged; workspace files unchanged", g.Unstage(ctx, in.Paths, in.All))
 	})
 
 	addUntypedTool(s, &mcp.Tool{
-		Name: "git_commit",
-		Description: "Commit the staged changes with the given message. Never amends, never runs repository hooks and never signs. " +
-			"Refuses when nothing is staged or when a sensitive file is staged. Check git_diff with staged=true first.",
+		Name:        "git_commit",
+		Description: "Commit the staged changes. Never amends, runs hooks or signs; refuses when nothing or a sensitive file is staged.",
 		Annotations: additive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitCommitArgs) (*mcp.CallToolResult, gitwrite.CommitResult, error) {
 		res, err := g.Commit(ctx, gitwrite.CommitOptions{Message: in.Message, AuthorName: in.AuthorName, AuthorEmail: in.AuthorEmail})
@@ -226,16 +224,15 @@ func addGitWriteTools(s *mcp.Server, g *gitwrite.Git) {
 
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "git_create_branch",
-		Description: "Create a new local branch at HEAD or at start, optionally switching to it. Existing branches are never overwritten.",
+		Description: "Create a local branch at HEAD or start, optionally switching to it; never overwrites.",
 		Annotations: additive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitCreateBranchArgs) (*mcp.CallToolResult, gitWriteOut, error) {
 		return gitMessageResult(g.CreateBranch(ctx, in.Name, in.Start, in.Switch))
 	})
 
 	addUntypedTool(s, &mcp.Tool{
-		Name: "git_switch_branch",
-		Description: "Switch the workspace to an existing local branch. Git refuses when uncommitted changes would be overwritten; " +
-			"there is no force option, so no work is lost. Non-conflicting uncommitted changes are carried over.",
+		Name:        "git_switch_branch",
+		Description: "Switch to an existing local branch. No force: git refuses when uncommitted changes would be lost.",
 		Annotations: destructive(),
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in gitSwitchArgs) (*mcp.CallToolResult, gitWriteOut, error) {
 		return gitMessageResult(g.Switch(ctx, in.Name))

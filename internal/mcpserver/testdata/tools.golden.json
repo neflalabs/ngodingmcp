@@ -4,12 +4,12 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped inside directories; pass one directly to count it.",
+    "description": "Estimate tokens (bytes/4) of files or directories without returning contents (dependency/cache dirs skipped unless passed directly).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "paths": {
-          "description": "list of file or directory paths relative to the workspace root",
+          "description": "file or directory paths",
           "items": {
             "type": "string"
           },
@@ -111,16 +111,16 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Delete a file or directory inside the workspace. Use recursive=true to remove non-empty directories. Refuses to delete workspace root.",
+    "description": "Delete a file or directory; recursive=true for a non-empty one. The workspace root is refused.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "file or directory path to delete, relative to workspace root",
+          "description": "path to delete",
           "type": "string"
         },
         "recursive": {
-          "description": "if true and target is a directory, deletes entire directory tree",
+          "description": "delete a whole directory tree",
           "type": "boolean"
         }
       },
@@ -138,24 +138,24 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Download a file (text or binary, e.g. images) from an https URL and save it in the workspace. Use this for binary files that write_file cannot create. Limits: https only, any public host, max 20 MiB. Loopback and private network addresses are refused. The write is atomic: on any error (size limit, sha256 mismatch, existing file without overwrite) nothing is written. Returns the relative path, bytes written, sha256 and the reported content type.",
+    "description": "Download an https URL (text or binary, e.g. images) into the workspace. Limits: any public host, max 20 MiB; loopback and private addresses are refused. Atomic: nothing is written on any error.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "overwrite": {
-          "description": "replace the destination if it already exists (default false)",
+          "description": "replace an existing file",
           "type": "boolean"
         },
         "path": {
-          "description": "destination file path, relative to the workspace root; parent directories are created",
+          "description": "destination path; parents are created",
           "type": "string"
         },
         "sha256": {
-          "description": "optional expected SHA-256 (64 hex characters); on mismatch nothing is written",
+          "description": "expected SHA-256 (hex)",
           "type": "string"
         },
         "source_url": {
-          "description": "https URL of the file to download. A signed, short-lived artifact URL (for example one supplied by the MCP client) works here. Only public https hosts are reached.",
+          "description": "https URL; signed short-lived artifact URLs work",
           "type": "string"
         }
       },
@@ -173,7 +173,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Apply several exact-text replacements to one file in a single atomic step and return a unified diff. Edits run in order and each sees the previous result. If any edit fails (old text missing or not unique), nothing is written. Use dry_run=true to preview the diff first.",
+    "description": "Apply exact-text edits to one file in order, all or nothing, and return a unified diff. dry_run=true previews.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -182,7 +182,7 @@
           "type": "boolean"
         },
         "edits": {
-          "description": "exact-text replacements applied in order; each needs old and new, and old must be unique unless replace_all is true",
+          "description": "edits in order; old must be unique unless replace_all",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -225,7 +225,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Return metadata about a file or directory: size, modification time, and line count.",
+    "description": "File or directory metadata: size, modified time, line count.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -275,7 +275,7 @@
       "idempotentHint": true,
       "readOnlyHint": false
     },
-    "description": "Stage new, modified and deleted files under the given paths, or the whole workspace with all=true. Ignored files are never staged (no force option) and sensitive files such as .env or private keys are skipped and listed.",
+    "description": "Stage paths, or everything with all=true. Ignored files are never staged; sensitive files (.env, keys) are skipped and listed.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -284,7 +284,7 @@
           "type": "boolean"
         },
         "paths": {
-          "description": "files or directories to stage, relative to the workspace root",
+          "description": "paths to stage",
           "items": {
             "type": "string"
           },
@@ -304,16 +304,16 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Commit the staged changes with the given message. Never amends, never runs repository hooks and never signs. Refuses when nothing is staged or when a sensitive file is staged. Check git_diff with staged=true first.",
+    "description": "Commit the staged changes. Never amends, runs hooks or signs; refuses when nothing or a sensitive file is staged.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "author_email": {
-          "description": "optional author email; defaults to git config user.email",
+          "description": "author email; defaults to git config user.email",
           "type": "string"
         },
         "author_name": {
-          "description": "optional author name; defaults to git config user.name",
+          "description": "author name; defaults to git config user.name",
           "type": "string"
         },
         "message": {
@@ -334,7 +334,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Create a new local branch at HEAD or at start, optionally switching to it. Existing branches are never overwritten.",
+    "description": "Create a local branch at HEAD or start, optionally switching to it; never overwrites.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -343,7 +343,7 @@
           "type": "string"
         },
         "start": {
-          "description": "optional commit or branch to start from (default HEAD)",
+          "description": "commit or branch to start from (default HEAD)",
           "type": "string"
         },
         "switch": {
@@ -363,20 +363,20 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Show `git diff` for the workspace or one path, optionally staged, as a summary (stat), or against a ref. Read-only; external diff and textconv programs never run, and sensitive files are excluded.",
+    "description": "`git diff` for the workspace or one path: staged, --stat or against a ref. Sensitive files are excluded.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "path": {
-          "description": "optional file or directory, relative to the workspace root",
+          "description": "file or directory, relative to the workspace root",
           "type": "string"
         },
         "ref": {
-          "description": "optional commit or branch to compare against, e.g. HEAD~1",
+          "description": "commit or branch to compare against, e.g. HEAD~1",
           "type": "string"
         },
         "staged": {
-          "description": "show staged changes (index vs HEAD) instead of unstaged ones",
+          "description": "staged changes (index vs HEAD)",
           "type": "boolean"
         },
         "stat": {
@@ -395,12 +395,12 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Download new commits and branches from a remote into remote-tracking branches (origin/main etc.). Local branches and workspace files are not changed. Never prompts for a password; see the hint in an auth error.",
+    "description": "Download new commits and branches from a remote into remote-tracking branches (origin/main etc.). Local branches and files are unchanged.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "prune": {
-          "description": "delete remote-tracking branches whose branch is gone on the remote",
+          "description": "prune deleted remote branches",
           "type": "boolean"
         },
         "remote": {
@@ -419,12 +419,12 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin (or the given remote). Nothing is pushed: call git_push with set_upstream=true next. Needs gh installed and logged in (`gh auth login`); never prompts.",
+    "description": "Create a new empty repository on GitHub with the GitHub CLI (gh), private unless visibility says otherwise, and add it as remote origin (or the given remote). Nothing is pushed.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "description": {
-          "description": "optional one-line description",
+          "description": "one-line description",
           "type": "string"
         },
         "name": {
@@ -432,7 +432,7 @@
           "type": "string"
         },
         "owner": {
-          "description": "optional organisation; default is the account gh is logged in as",
+          "description": "organisation; default is the account gh is logged in as",
           "type": "string"
         },
         "remote": {
@@ -462,7 +462,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). Requires write access to the repository; never prompts.",
+    "description": "Re-run a GitHub Actions workflow run (all jobs, or only failed jobs with failed_only=true) via the GitHub CLI (gh). Needs write access.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -488,12 +488,12 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). Omit run_id (or pass 0) to inspect the latest run. Read-only; never prompts.",
+    "description": "Inspect a GitHub Actions workflow run: show jobs, steps, status/conclusion, and optionally failed step logs (failed_logs=true). run_id 0 = latest.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "optional branch filter when run_id is omitted",
+          "description": "branch filter when run_id is omitted",
           "type": "string"
         },
         "failed_logs": {
@@ -501,11 +501,11 @@
           "type": "boolean"
         },
         "run_id": {
-          "description": "workflow run database ID from git_github_runs; omit or 0 to inspect the latest matching run",
+          "description": "run ID from git_github_runs; 0 = latest",
           "type": "integer"
         },
         "workflow": {
-          "description": "optional workflow file name or name when run_id is omitted",
+          "description": "workflow file name or name when run_id is omitted",
           "type": "string"
         }
       },
@@ -519,12 +519,12 @@
       "openWorldHint": true,
       "readOnlyHint": true
     },
-    "description": "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). Filter optionally by workflow (e.g. ci.yml), branch, or status/conclusion. Read-only; never prompts.",
+    "description": "List recent GitHub Actions workflow runs for this repository using the GitHub CLI (gh). Optionally filtered.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "branch": {
-          "description": "optional branch name to filter runs",
+          "description": "branch name to filter runs",
           "type": "string"
         },
         "limit": {
@@ -532,11 +532,11 @@
           "type": "integer"
         },
         "status": {
-          "description": "optional status or conclusion filter: queued, in_progress, completed, success, failure, cancelled",
+          "description": "status or conclusion, e.g. failure",
           "type": "string"
         },
         "workflow": {
-          "description": "optional workflow file name or name, e.g. ci.yml",
+          "description": "workflow file name or name, e.g. ci.yml",
           "type": "string"
         }
       },
@@ -550,7 +550,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Create a git repository at the workspace root (initial branch main unless given). Refuses when the workspace already is a repository.",
+    "description": "Create a git repository at the workspace root (branch main unless given).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -568,7 +568,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Show recent commits, one line each (hash, date, author, subject), for the workspace or one path. Read-only.",
+    "description": "Recent commits, one line each (hash, date, author, subject), optionally for one path.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -577,7 +577,7 @@
           "type": "integer"
         },
         "path": {
-          "description": "optional file or directory, relative to the workspace root",
+          "description": "file or directory, relative to the workspace root",
           "type": "string"
         }
       },
@@ -591,7 +591,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). On a conflict the merge is aborted automatically, the branch is left unchanged and the conflicting files are listed. Never runs hooks.",
+    "description": "Merge a branch, remote branch (origin/main) or commit into the current branch. Needs a clean working tree (commit first). A conflict aborts the merge and lists the files.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -600,11 +600,11 @@
           "type": "boolean"
         },
         "message": {
-          "description": "optional merge commit message",
+          "description": "merge commit message",
           "type": "string"
         },
         "ref": {
-          "description": "branch, remote branch (origin/main, after git_fetch) or commit to merge into the current branch",
+          "description": "branch, origin/\u003cbranch\u003e or commit",
           "type": "string"
         }
       },
@@ -622,7 +622,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed and the error says to use git_merge with the remote branch. No rebase. Refuses when uncommitted changes would be overwritten.",
+    "description": "Fetch the remote branch and fast-forward the current branch to it. Fast-forward only: when local and remote have diverged nothing is changed (use git_merge). No rebase.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -646,7 +646,7 @@
       "openWorldHint": true,
       "readOnlyHint": false
     },
-    "description": "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; a rejected non-fast-forward push is reported (pull or merge first). Use set_upstream=true on a branch's first push. Never prompts for a password.",
+    "description": "Push one local branch (default: the current one) to a remote. Never forces, never deletes remote branches and never pushes tags; set_upstream=true on a first push.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -663,7 +663,7 @@
           "type": "string"
         },
         "set_upstream": {
-          "description": "remember remote/remote_branch as the branch's upstream (use on the first push of a branch)",
+          "description": "set the upstream (first push)",
           "type": "boolean"
         }
       },
@@ -677,7 +677,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "List, add, change (set_url) or remove git remotes. Only https and ssh URLs are accepted; local paths, file://, git://, http:// and ext:: are refused, and https URLs may not contain a username or token (credentials come from the user's git credential helper or ssh key). remove deletes only the remote and its remote-tracking branches, never local branches or commits.",
+    "description": "List, add, set_url or remove remotes. Only https and ssh URLs, without credentials; remove never touches local branches.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -690,7 +690,7 @@
           "type": "string"
         },
         "url": {
-          "description": "remote URL for add and set_url: https://host/owner/repo.git (no token in it) or ssh (git@host:owner/repo.git, ssh://git@host/owner/repo.git)",
+          "description": "https://host/owner/repo.git or git@host:owner/repo.git",
           "type": "string"
         }
       },
@@ -703,7 +703,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Show `git status --short --branch` for the workspace. Read-only; sensitive files are hidden.",
+    "description": "`git status --short --branch`; sensitive files are hidden.",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"
@@ -716,7 +716,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Switch the workspace to an existing local branch. Git refuses when uncommitted changes would be overwritten; there is no force option, so no work is lost. Non-conflicting uncommitted changes are carried over.",
+    "description": "Switch to an existing local branch. No force: git refuses when uncommitted changes would be lost.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -738,7 +738,7 @@
       "idempotentHint": true,
       "readOnlyHint": false
     },
-    "description": "Remove paths (or everything with all=true) from the staging area. The files in the workspace are not changed.",
+    "description": "Unstage paths, or everything with all=true; workspace files are unchanged.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -747,7 +747,7 @@
           "type": "boolean"
         },
         "paths": {
-          "description": "files or directories to unstage, relative to the workspace root",
+          "description": "paths to unstage",
           "items": {
             "type": "string"
           },
@@ -767,7 +767,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Insert text before a 1-based line number. Use line = total_lines + 1 to append at the end.",
+    "description": "Insert text before a 1-based line; line = total_lines + 1 appends.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -798,7 +798,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "List files and directories inside the workspace, one level or recursively. Recursive listings are capped at 2000 entries and dependency/build-cache directories are skipped; pass one as path to list it.",
+    "description": "List files and directories, one level or recursively (max 2000; dependency/cache dirs skipped unless passed as path).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -820,7 +820,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "List background processes started in this session with their status, readiness, PID, exit code and runtime.",
+    "description": "List this session's background processes: status, readiness, PID, exit code, runtime.",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"
@@ -915,7 +915,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Create a directory (and any necessary parent directories) inside the workspace.",
+    "description": "Create a directory and any missing parents.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -937,7 +937,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Move or rename a file or directory within the workspace.",
+    "description": "Move or rename a file or directory.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -946,7 +946,7 @@
           "type": "string"
         },
         "to": {
-          "description": "destination file or directory path, relative to workspace root",
+          "description": "destination path",
           "type": "string"
         }
       },
@@ -963,12 +963,12 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Read process stdout/stderr. Use after_seq with nextSeq from the previous response to fetch only new lines; omit it for the last tail_lines. Output is bounded by a per-process ring buffer.",
+    "description": "Read process output: after_seq = the last nextSeq for new lines only, else the last tail_lines.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "after_seq": {
-          "description": "only return lines newer than this cursor; use nextSeq from the previous call",
+          "description": "nextSeq from the previous call",
           "type": "integer"
         },
         "name": {
@@ -999,7 +999,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Read a text file. Returns numbered lines plus the raw content of the requested slice.",
+    "description": "Read a text file as numbered lines; offset and limit select a slice.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1029,7 +1029,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Replace an inclusive range of 1-based lines with new content. Equivalent to delete_lines + insert_text in one atomic operation.",
+    "description": "Replace an inclusive range of 1-based lines with new content.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1066,7 +1066,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Replace an exact substring in a file. By default the old text must occur exactly once; set replace_all to replace every occurrence.",
+    "description": "Replace an exact substring; it must occur once unless replace_all=true.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1075,7 +1075,7 @@
           "type": "string"
         },
         "old": {
-          "description": "exact text to find (must be unique unless replace_all is true)",
+          "description": "exact text; unique unless replace_all",
           "type": "string"
         },
         "path": {
@@ -1083,7 +1083,7 @@
           "type": "string"
         },
         "replace_all": {
-          "description": "replace every occurrence instead of requiring a unique match",
+          "description": "replace every occurrence",
           "type": "boolean"
         }
       },
@@ -1097,7 +1097,7 @@
     "name": "replace_text"
   },
   {
-    "description": "Stop a background process and start it again with the same command, working directory and environment.",
+    "description": "Restart a background process with the same command, cwd and env.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1123,7 +1123,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Run an allowlisted command inside the workspace root without a shell. Allowed prefixes: go test, go vet. Allowed exact commands (no extra arguments): bun run dev. Non-zero exit codes are reported in the result.",
+    "description": "Run an allowlisted command in the workspace root (no shell); a non-zero exit is reported in the result. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1138,11 +1138,11 @@
           ]
         },
         "command": {
-          "description": "command to run; must match an allowlisted prefix such as \"go test\"",
+          "description": "allowlisted command, e.g. \"go test\"",
           "type": "string"
         },
         "timeout_seconds": {
-          "description": "optional timeout in seconds, capped by the server maximum",
+          "description": "timeout in seconds (capped by the server)",
           "type": "integer"
         }
       },
@@ -1159,7 +1159,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Search and replace a regular expression across all files in the workspace. Use dry_run=true to preview changes without writing. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to replace inside it.",
+    "description": "Regex replace across workspace files; dry_run=true previews (dependency/cache dirs skipped unless passed as path).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1168,7 +1168,7 @@
           "type": "boolean"
         },
         "glob": {
-          "description": "optional glob filter, e.g. *.go or **/*.go",
+          "description": "glob filter, e.g. *.go or **/*.go",
           "type": "string"
         },
         "max_files": {
@@ -1201,12 +1201,12 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Search file contents with a regular expression and return matching paths with line numbers. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped; pass one as path to search inside it.",
+    "description": "Regex search over file contents; returns paths and line numbers (dependency/cache dirs skipped unless passed as path).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
         "glob": {
-          "description": "optional glob filter on relative paths, e.g. *.go or **/*.go",
+          "description": "glob filter on relative paths, e.g. *.go or **/*.go",
           "type": "string"
         },
         "max_results": {
@@ -1230,7 +1230,7 @@
     "name": "search_text"
   },
   {
-    "description": "Start an allowlisted command as a long-lived background process inside the workspace root. It keeps running across tool calls, so use process_logs to inspect output and stop_process to end it. Commands never go through a shell. Allowed prefixes: go test, go vet. Allowed exact commands (no extra arguments): bun run dev. ",
+    "description": "Start an allowlisted command (no shell) as a background process that outlives the call; read it with process_logs, end it with stop_process. Allowed prefixes: go test, go vet. Exact commands (no extra args): bun run dev. ",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1245,22 +1245,22 @@
           ]
         },
         "command": {
-          "description": "command to start; must match the same allowlist as run_command, e.g. \"bun run dev\"",
+          "description": "allowlisted command, e.g. \"bun run dev\"",
           "type": "string"
         },
         "cwd": {
-          "description": "optional working directory relative to the workspace root",
+          "description": "working directory relative to the workspace root",
           "type": "string"
         },
         "env": {
           "additionalProperties": {
             "type": "string"
           },
-          "description": "optional environment variables; allowed keys: PORT, HOST, HOSTNAME, NODE_ENV, BUN_ENV, CI",
+          "description": "env vars; keys: PORT, HOST, HOSTNAME, NODE_ENV, BUN_ENV, CI",
           "type": "object"
         },
         "name": {
-          "description": "optional process name (letters, digits, _ or -); generated when empty",
+          "description": "process name (letters, digits, _ or -); generated when empty",
           "type": "string"
         },
         "timeout_seconds": {
@@ -1268,11 +1268,11 @@
           "type": "integer"
         },
         "wait_for_log": {
-          "description": "optional regular expression that must match process output before start returns",
+          "description": "regex the output must match before start returns",
           "type": "string"
         },
         "wait_for_port": {
-          "description": "optional TCP port that must accept connections before start returns",
+          "description": "TCP port that must accept connections before start returns",
           "type": "integer"
         }
       },
@@ -1289,7 +1289,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Stop every running background process. Useful for resetting workspace state before starting again.",
+    "description": "Stop every background process.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1308,7 +1308,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Stop a background process and its children. Sends SIGTERM first and escalates to SIGKILL after the grace period. Set wait=false to return immediately.",
+    "description": "Stop a background process and its children (SIGTERM, then SIGKILL after the grace period).",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1321,7 +1321,7 @@
           "type": "integer"
         },
         "wait": {
-          "description": "wait for exit before returning (default true); false signals and returns immediately",
+          "description": "wait for exit (default true)",
           "type": [
             "null",
             "boolean"
@@ -1340,7 +1340,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Check the syntax of a file without running it. Go (.go) and JSON (.json) get a full parse; JavaScript (.js/.mjs/.cjs), TypeScript (.ts/.mts/.cts) and CSS (.css) get a delimiter check (balanced brackets, closed strings, template literals, regexes and comments). Other types return valid=true with check=none.",
+    "description": "Check a file's syntax without running it: full parse for Go and JSON, delimiter check for JS, TS and CSS; other types return check=none.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -1411,7 +1411,7 @@
       "idempotentHint": false,
       "readOnlyHint": true
     },
-    "description": "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped.",
+    "description": "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files (dependency/cache dirs skipped).",
     "inputSchema": {
       "additionalProperties": false,
       "type": "object"
@@ -1424,7 +1424,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Create or overwrite a file with the given content. Parent directories are created automatically. Writes are atomic.",
+    "description": "Create or overwrite a file atomically; parent directories are created.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

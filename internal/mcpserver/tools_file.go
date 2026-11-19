@@ -45,7 +45,7 @@ type readFileOut struct {
 func addReadFile(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "read_file",
-		Description: "Read a text file. Returns numbered lines plus the raw content of the requested slice.",
+		Description: "Read a text file as numbered lines; offset and limit select a slice.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in readFileArgs) (*mcp.CallToolResult, readFileOut, error) {
 		res, err := ws.ReadFile(in.Path, in.Offset, in.Limit)
@@ -73,7 +73,7 @@ type writeFileOut struct {
 func addWriteFile(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "write_file",
-		Description: "Create or overwrite a file with the given content. Parent directories are created automatically. Writes are atomic.",
+		Description: "Create or overwrite a file atomically; parent directories are created.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in writeFileArgs) (*mcp.CallToolResult, writeFileOut, error) {
 		p, n, err := ws.WriteFile(in.Path, in.Content)
@@ -101,7 +101,7 @@ type listFilesOut struct {
 func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "list_files",
-		Description: "List files and directories inside the workspace, one level or recursively. Recursive listings are capped at 2000 entries and dependency/build-cache directories are skipped; pass one as path to list it.",
+		Description: "List files and directories, one level or recursively (max 2000; dependency/cache dirs skipped unless passed as path).",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in listFilesArgs) (*mcp.CallToolResult, listFilesOut, error) {
 		entries, truncated, err := ws.ListFiles(in.Path, in.Recursive)
@@ -139,7 +139,7 @@ type fileInfoOut struct {
 func addFileInfo(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "file_info",
-		Description: "Return metadata about a file or directory: size, modification time, and line count.",
+		Description: "File or directory metadata: size, modified time, line count.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in fileInfoArgs) (*mcp.CallToolResult, fileInfoOut, error) {
 		info, err := ws.Stat(in.Path)
@@ -165,7 +165,7 @@ type mkdirPathOut struct {
 func addMkdirPath(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "mkdir_path",
-		Description: "Create a directory (and any necessary parent directories) inside the workspace.",
+		Description: "Create a directory and any missing parents.",
 		Annotations: additive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in mkdirPathArgs) (*mcp.CallToolResult, mkdirPathOut, error) {
 		p, err := ws.Mkdir(in.Path)
@@ -180,7 +180,7 @@ func addMkdirPath(s *mcp.Server, ws *workspace.Workspace) {
 
 type movePathArgs struct {
 	From string `json:"from" jsonschema:"source file or directory path, relative to workspace root"`
-	To   string `json:"to" jsonschema:"destination file or directory path, relative to workspace root"`
+	To   string `json:"to" jsonschema:"destination path"`
 }
 
 type movePathOut struct {
@@ -190,7 +190,7 @@ type movePathOut struct {
 func addMovePath(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "move_path",
-		Description: "Move or rename a file or directory within the workspace.",
+		Description: "Move or rename a file or directory.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in movePathArgs) (*mcp.CallToolResult, movePathOut, error) {
 		p, err := ws.Rename(in.From, in.To)
@@ -204,8 +204,8 @@ func addMovePath(s *mcp.Server, ws *workspace.Workspace) {
 // --- delete_path -----------------------------------------------------------
 
 type deletePathArgs struct {
-	Path      string `json:"path" jsonschema:"file or directory path to delete, relative to workspace root"`
-	Recursive bool   `json:"recursive,omitempty" jsonschema:"if true and target is a directory, deletes entire directory tree"`
+	Path      string `json:"path" jsonschema:"path to delete"`
+	Recursive bool   `json:"recursive,omitempty" jsonschema:"delete a whole directory tree"`
 }
 
 type deletePathOut struct {
@@ -215,7 +215,7 @@ type deletePathOut struct {
 func addDeletePath(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "delete_path",
-		Description: "Delete a file or directory inside the workspace. Use recursive=true to remove non-empty directories. Refuses to delete workspace root.",
+		Description: "Delete a file or directory; recursive=true for a non-empty one. The workspace root is refused.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in deletePathArgs) (*mcp.CallToolResult, deletePathOut, error) {
 		if err := ws.Delete(in.Path, in.Recursive); err != nil {

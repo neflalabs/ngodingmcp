@@ -50,14 +50,26 @@ func allowlistDescription(prefix, exact []string) string {
 		desc += "Allowed prefixes: " + strings.Join(prefix, ", ") + ". "
 	}
 	if len(exact) > 0 {
-		desc += "Allowed exact commands (no extra arguments): " + strings.Join(exact, ", ") + ". "
+		desc += "Exact commands (no extra args): " + strings.Join(exact, ", ") + ". "
 	}
 	for _, e := range exact {
 		if e == runner.RestartCommand {
-			desc += "`" + runner.RestartCommand + "` (run_command only) restarts this ngodingmcp service about a second after replying, " +
-				"e.g. after `go build -o ngodingmcp .`; tool calls fail for a few seconds, then work again. "
+			desc += "`" + runner.RestartCommand + "` (run_command only) restarts this server about a second after replying, " +
+				"e.g. after `go build -o ngodingmcp .`; calls fail for a few seconds. "
 			break
 		}
 	}
 	return desc
+}
+
+// withoutRestart drops the restart command from an exact allowlist, for
+// tools that refuse it (start_process).
+func withoutRestart(exact []string) []string {
+	out := make([]string, 0, len(exact))
+	for _, e := range exact {
+		if e != runner.RestartCommand {
+			out = append(out, e)
+		}
+	}
+	return out
 }

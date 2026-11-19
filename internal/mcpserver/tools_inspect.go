@@ -32,7 +32,7 @@ type workspaceStatsOut struct {
 func addWorkspaceStats(s *mcp.Server, ws *workspace.Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "workspace_stats",
-		Description: "Return aggregate statistics for the entire workspace: file counts, line counts, bytes, breakdown by extension, largest and most recently modified files. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped.",
+		Description: "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files (dependency/cache dirs skipped).",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, _ workspaceStatsArgs) (*mcp.CallToolResult, workspaceStatsOut, error) {
 		stats, err := ws.Stats()
@@ -94,7 +94,7 @@ type validateSyntaxOut struct {
 func addValidateSyntax(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "validate_syntax",
-		Description: "Check the syntax of a file without running it. Go (.go) and JSON (.json) get a full parse; JavaScript (.js/.mjs/.cjs), TypeScript (.ts/.mts/.cts) and CSS (.css) get a delimiter check (balanced brackets, closed strings, template literals, regexes and comments). Other types return valid=true with check=none.",
+		Description: "Check a file's syntax without running it: full parse for Go and JSON, delimiter check for JS, TS and CSS; other types return check=none.",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in validateSyntaxArgs) (*mcp.CallToolResult, validateSyntaxOut, error) {
 		res, err := ws.ValidateSyntax(in.Path)
@@ -123,7 +123,7 @@ func addValidateSyntax(s *mcp.Server, ws *workspace.Workspace) {
 // --- count_tokens ----------------------------------------------------------
 
 type countTokensArgs struct {
-	Paths []string `json:"paths" jsonschema:"list of file or directory paths relative to the workspace root"`
+	Paths []string `json:"paths" jsonschema:"file or directory paths"`
 }
 
 type countTokensOut struct {
@@ -135,7 +135,7 @@ type countTokensOut struct {
 func addCountTokens(s *mcp.Server, ws *workspace.Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "count_tokens",
-		Description: "Estimate the number of LLM tokens for one or more files or directories without returning their contents. Uses bytes/4 as a rough proxy. Dependency and build-cache directories (node_modules, .venv, __pycache__, etc.) are skipped inside directories; pass one directly to count it.",
+		Description: "Estimate tokens (bytes/4) of files or directories without returning contents (dependency/cache dirs skipped unless passed directly).",
 		Annotations: readOnly(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in countTokensArgs) (*mcp.CallToolResult, countTokensOut, error) {
 		items, err := ws.CountTokens(in.Paths)
