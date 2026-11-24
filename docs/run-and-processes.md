@@ -16,14 +16,25 @@ Saat aktif, policy memakai daftar **predefined di kode** (`internal/runner/polic
 
 | Prefix (argumen tambahan bebas) | Exact (harus sama persis) |
 |---|---|
-| `go build` | `bun install --frozen-lockfile` |
-| `go test` | `bun test` |
-| `go vet` | `bun run build` |
-| `gofmt -l` | `bun run dev` |
-| `staticcheck` | `ngodingmcp restart` |
-| `git status` | |
-| `git diff` | |
-| `git log` | |
+| `go build` | `bun init -y` |
+| `go test` | `bun install` |
+| `go vet` | `bun install --frozen-lockfile` |
+| `gofmt -l` | `bun test` |
+| `staticcheck` | `bun run build` |
+| `node` | `bun run dev` |
+| `git status` | `ngodingmcp restart` |
+| `git diff` | `npm init -y` |
+| `git log` | `npm install` |
+| | `npm ci` |
+| | `npm test` |
+| | `npm run build` |
+| | `npm run dev` |
+
+`bun install` dan `npm install` hanya tanpa argumen. Untuk initiate, jalankan
+`bun init -y` atau `npm init -y`; untuk menambah dependency, ubah `package.json`
+lewat `write_file` lalu jalankan `bun install`/`npm install`. `bunx`, `npx`,
+`bun add <pkg>`, `npm install <pkg>`, dan `-g`/`--global` sengaja tidak masuk
+allowlist: bisa mengeksekusi atau menginstall di luar workspace.
 
 `staticcheck` opsional: entri ini cuma berguna kalau programnya kebetulan ada
 di `PATH` server. Tidak perlu di-install dan tidak perlu mengubah unit systemd,
@@ -73,6 +84,9 @@ sebagai sumber policy.
   (`-exec`, `-toolexec`, `--no-index` untuk `git diff`, `-vettool` untuk
   `go vet`, `--output` untuk menulis di luar workspace) ditolak meski command-nya
   lolos allowlist.
+- Argumen path juga dicek: path absolut, segmen `..`, dan path lewat symlink
+  yang keluar root ditolak. `go build -o /tmp/x` dan `gofmt -l /etc/passwd`
+  dengan demikian tak bisa dipakai untuk membaca atau menulis di luar workspace.
 - `cwd` selalu root workspace. Timeout default 60 detik, bisa diubah per request,
   dibatasi oleh `--run-timeout`.
 - Output stdout+stderr digabung dan dipotong pada 256 KiB.
@@ -82,7 +96,13 @@ sebagai sumber policy.
   output (sampai batas 256 KiB).
 - Exit code non-zero tetap dikembalikan sebagai hasil (bukan error protokol),
   supaya AI bisa membaca kegagalan build/test.
-- Saat timeout, seluruh process group dibunuh (termasuk child process).
+- Saat timeout milik runner (batas server/flag), seluruh process group dibunuh
+  (termasuk child process) dan hasilnya `timed out`.
+- Kalau deadline atau cancel datang dari pemanggil lebih dulu — mis. klien MCP
+  membatalkan request, atau `timeout_seconds` lebih pendek dari batas server —
+  tool mengembalikan error `caller deadline exceeded`, bukan hasil `timedOut`.
+  `errors.Is(err, context.DeadlineExceeded)` tetap berlaku, jadi pemanggil bisa
+  membedakan "server memberi batas waktu" dari "saya sendiri berhenti menunggu".
 
 ## Background process
 
@@ -130,8 +150,14 @@ Parameter `start_process` lain:
 | `cwd` | direktori relatif di dalam workspace (default root) |
 | `env` | hanya `PORT`, `HOST`, `HOSTNAME`, `NODE_ENV`, `BUN_ENV`, `CI` |
 | `wait_for_log` | regex Go yang harus muncul di output |
-| `wait_for_port` | port TCP yang harus menerima koneksi |
+| `wait_for_port` | port TCP yang harus menerima koneksi; start ditolak kalau port sudah dipakai proses lain |
 | `timeout_seconds` | timeout readiness (default 10, maks 60) |
+
+Sebelum command dijalankan, `wait_for_port` memastikan port belum ada yang
+mendengarkan. Kalau ada, `start_process` gagal dengan error `ready port already
+in use` dan proses baru tidak dimulai — listener lama tidak bisa disangka sebagai
+server yang baru siap. Pemeriksaan ini memakai TCP connect ke `127.0.0.1`/`::1`;
+proses yang bind hanya di interface lain tetap bisa lolos sebagai timeout.
 
 `stop_process` menerima `wait: false` untuk langsung kembali; eskalasi SIGKILL
 tetap berjalan di background. `restart_process` memakai ulang konfigurasi proses.
@@ -150,6 +176,10 @@ tetap berjalan di background. `restart_process` memakai ulang konfigurasi proses
   Nama otomatis tidak akan bentrok dengan nama manual.
 - `stop_process` mengirim sinyal ke seluruh process group/tree, jadi child process
   ikut berhenti (Job Object di Windows).
+- Kalau command daemonize (parent exit duluan, child mewarisi stdout/stderr),
+  pipe log ditutup maksimal 500 ms setelah parent exit. Proses tidak lagi
+  dianggap berjalan, walau child-nya masih hidup; tulisan log setelah itu bisa
+  gagal. Ini pengecualian dari aturan "tidak ada orphan process" di bawah.
 - Saat server di-shutdown, semua proses yang dikelola ikut dihentikan (grace 3
   detik, lalu force kill).
 - Proses **tidak** bertahan setelah server mati; ini disengaja agar tidak ada

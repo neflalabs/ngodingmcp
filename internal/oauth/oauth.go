@@ -76,6 +76,10 @@ type Server struct {
 	consumed   map[string]consumedGrant
 
 	statePath string
+
+	// testRotateGap pauses a rotation after the old token is consumed.
+	// Test-only: lets tests force the replay/rotation interleaving.
+	testRotateGap func()
 }
 
 // challengeForToken holds the PKCE inputs for a pending authorize request.

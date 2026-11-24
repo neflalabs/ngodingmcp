@@ -30,6 +30,9 @@ const (
 	maxEntries = 64
 	// stopGrace is the default SIGTERM-to-SIGKILL grace period.
 	stopGrace = 5 * time.Second
+	// pipeWaitDelay bounds how long Wait keeps log pipes open after the
+	// direct child exits. A daemonized descendant can inherit them.
+	pipeWaitDelay = 500 * time.Millisecond
 	// maxTailLines caps process_logs tail requests.
 	maxTailLines = 1000
 )
@@ -44,6 +47,7 @@ var (
 	ErrInvalidDir  = errors.New("invalid working directory")
 	ErrInvalidEnv  = errors.New("environment variable is not allowed")
 	ErrInvalidPort = errors.New("invalid port")
+	ErrPortBusy    = errors.New("ready port already in use")
 )
 
 var nameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$`)
@@ -214,6 +218,12 @@ func (m *Manager) StartWithOptions(opts StartOptions) (Info, error) {
 	if opts.ReadyPort < 0 || opts.ReadyPort > 65535 {
 		return Info{}, fmt.Errorf("%w: %d", ErrInvalidPort, opts.ReadyPort)
 	}
+	// A listener that already owns the port means the new child can never
+	// bind it, and waitReady would wrongly credit that foreign listener.
+	// Refuse before launching anything.
+	if opts.ReadyPort > 0 && portOpen(opts.ReadyPort) {
+		return Info{}, fmt.Errorf("%w: %d", ErrPortBusy, opts.ReadyPort)
+	}
 	timeout := opts.ReadyTimeout
 	if timeout <= 0 {
 		timeout = DefaultReadyTimeout
@@ -260,6 +270,7 @@ func (m *Manager) StartWithOptions(opts StartOptions) (Info, error) {
 	prepareCmd(cmd)
 	cmd.Stdout = p.logs
 	cmd.Stderr = p.logs
+	cmd.WaitDelay = pipeWaitDelay
 	if err := cmd.Start(); err != nil {
 		m.mu.Unlock()
 		return Info{}, fmt.Errorf("start %s: %w", runner.FormatArgv(opts.Argv), err)

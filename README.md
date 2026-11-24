@@ -139,8 +139,9 @@ Tabel flag dan env lengkap: [docs/configuration.md](docs/configuration.md).
   program dari config repo tidak pernah jalan. **Semua** tool git menolak
   `.git/config` berbahaya. Tool remote tidak pernah meminta
   password; auth memakai ssh-agent/key, credential helper global, atau `gh`.
-- File sensitif diblokir secara default. `--allow-sensitive` membuka akses AI ke
-  `.env`, private key, dan isi `.git`.
+- File sensitif diblokir secara default. `--allow-sensitive` atau toggle
+  `allowSensitive` di TUI/Web UI membuka akses AI ke `.env`, private key, dan isi
+  `.git`; toggle yang tersimpan di `config.json` tetap aktif setelah restart.
 - `run_command` dan background process memberi akses eksekusi sebagai user yang
   menjalankan server. Aktifkan hanya di workspace tepercaya.
 

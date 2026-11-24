@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -52,6 +53,20 @@ func TestHelperProcess(t *testing.T) {
 		fmt.Println("sleeping")
 		time.Sleep(30 * time.Second)
 		os.Exit(0)
+	case "daemon":
+		// The parent exits at once; the child keeps stdout/stderr open.
+		child := exec.Command(os.Args[0], "-test.run=TestHelperProcess", "--", "daemon-child")
+		child.Stdout = os.Stdout
+		child.Stderr = os.Stderr
+		if err := child.Start(); err != nil {
+			fmt.Println("daemon start error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("daemon parent exiting")
+		os.Exit(0)
+	case "daemon-child":
+		time.Sleep(3 * time.Second)
+		fmt.Println("daemon child exiting")
 	case "ready":
 		fmt.Println("booting")
 		time.Sleep(200 * time.Millisecond)
@@ -247,6 +262,33 @@ func TestStartNonZeroExit(t *testing.T) {
 	}
 }
 
+func TestDaemonParentExitDoesNotStallWait(t *testing.T) {
+	m := newManager(t, 0)
+	if _, err := m.Start("daemon", helperArgv("daemon")); err != nil {
+		t.Fatal(err)
+	}
+	p := m.get("daemon")
+
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	select {
+	case <-p.done:
+	case <-deadline.C:
+		t.Error("parent exited but process still marked running after 2s")
+	}
+	// Reap the descendant that inherited the log pipes. Without a fix it is
+	// the only thing that would eventually unblock cmd.Wait.
+	_ = p.kill()
+
+	info, err := m.Get("daemon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.ExitCode != 0 {
+		t.Errorf("ExitCode = %d, want 0 (parent exited normally)", info.ExitCode)
+	}
+}
+
 func TestStartAutoNameAvoidsCollision(t *testing.T) {
 	m := newManager(t, 0)
 	if _, err := m.Start("proc-1", helperArgv("sleep")); err != nil {
@@ -395,6 +437,31 @@ func TestWaitForPort(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("StartWithOptions: %v", err)
+	}
+}
+
+func TestWaitForPortRejectsBusyPort(t *testing.T) {
+	m := newManager(t, 0)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	port := ln.Addr().(*net.TCPAddr).Port
+
+	// A listener already owns the port, so the child can never bind it. The
+	// old probe saw this listener and reported the child ready.
+	_, err = m.StartWithOptions(StartOptions{
+		Name:         "stale",
+		Argv:         helperArgv("slow"),
+		ReadyPort:    port,
+		ReadyTimeout: 500 * time.Millisecond,
+	})
+	if !errors.Is(err, ErrPortBusy) {
+		t.Fatalf("err = %v, want ErrPortBusy", err)
+	}
+	if _, err := m.Get("stale"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("doomed child was launched: %v", err)
 	}
 }
 

@@ -1417,11 +1417,11 @@ function handleWorkspaceEvent(ev) {
       scheduleStatsRefresh();
       if (state.currentPath) checkActiveFileAfterEvent("modified", state.currentPath);
     }
-    state.lastSeq = ev.seq || state.lastSeq;
+    state.lastSeq = Math.max(state.lastSeq, ev.seq || state.lastSeq);
     return;
   }
   if (typeof ev.seq === "number") {
-    state.lastSeq = ev.seq;
+    state.lastSeq = Math.max(state.lastSeq, ev.seq);
   }
   scheduleStatsRefresh();
 

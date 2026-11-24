@@ -109,6 +109,43 @@ func TestSettingsRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSettingsKeepsLegacyShortToken(t *testing.T) {
+	isolateConfigDir(t)
+	ws, err := workspace.New(t.TempDir(), 1<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.Update(func(c *config.Config) { c.Token = "short" }); err != nil {
+		t.Fatal(err)
+	}
+	u := New(ws, auth.New("short", "session"), "test")
+
+	put := func(body string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPut, "http://127.0.0.1:8080/api/settings", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		u.handlePutSettings(rec, req)
+		return rec
+	}
+
+	// The Web UI always sends every field, including the unchanged token.
+	body := `{"publicUrl":"","oauth":true,"trustedProxies":["loopback"],"addr":"127.0.0.1:9000","token":"short","runEnabled":true,"allowSensitive":true,"allowDownload":true}`
+	if rec := put(body); rec.Code != http.StatusOK {
+		t.Fatalf("PUT with legacy token: status %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := config.Load().Token; got != "short" {
+		t.Fatalf("saved token = %q, want unchanged %q", got, "short")
+	}
+	if !ws.AllowSensitive() {
+		t.Fatal("unrelated setting was not applied")
+	}
+
+	// A newly entered short token must still be rejected.
+	if rec := put(`{"token":"brand-new-short"}`); rec.Code != http.StatusBadRequest {
+		t.Fatalf("PUT with new short token: status %d, want 400", rec.Code)
+	}
+}
+
 func TestSettingsPutThroughAPIDoesNotDeadlock(t *testing.T) {
 	isolateConfigDir(t)
 	root := t.TempDir()

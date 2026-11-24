@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +150,54 @@ func TestRemoteURLRefused(t *testing.T) {
 	}
 	if len(list) != 0 {
 		t.Fatalf("refused URLs left remotes behind: %+v", list)
+	}
+}
+
+func TestRemoteURLRefusesPrivateHosts(t *testing.T) {
+	g, _ := newGit(t)
+	ctx := context.Background()
+	if _, err := g.Init(ctx, "main"); err != nil {
+		t.Fatal(err)
+	}
+	bad := []string{
+		"https://127.0.0.1/a/b.git",
+		"https://localhost/a/b.git",
+		"https://[::1]/a/b.git",
+		"https://169.254.169.254/latest/meta-data/",
+		"https://10.0.0.1/a/b.git",
+		"ssh://git@127.0.0.1/a/b.git",
+		"git@127.0.0.1:a/b.git",
+		"git@localhost:a/b.git",
+	}
+	for i, u := range bad {
+		_, err := g.AddRemote(ctx, "r"+strconv.Itoa(i), u)
+		if err == nil {
+			t.Errorf("url %q accepted", u)
+			continue
+		}
+		if !strings.Contains(err.Error(), "not public") {
+			t.Errorf("url %q: err = %v, want host error", u, err)
+		}
+	}
+	list, err := g.Remotes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("refused URLs left remotes behind: %+v", list)
+	}
+}
+
+func TestFetchRefusesPrivateStoredRemote(t *testing.T) {
+	g, root := newGit(t)
+	ctx := context.Background()
+	if _, err := g.Init(ctx, "main"); err != nil {
+		t.Fatal(err)
+	}
+	gitOut(t, root, "remote", "add", "origin", "https://127.0.0.1/r.git")
+	_, err := g.Fetch(ctx, FetchOptions{})
+	if err == nil || !strings.Contains(err.Error(), "not public") {
+		t.Fatalf("fetch err = %v, want host error before any connection", err)
 	}
 }
 
@@ -404,6 +453,10 @@ func TestRemoteRefusesUntrustedLocalConfig(t *testing.T) {
 		{"filter.x.smudge", "touch pwned"},
 		{"merge.x.driver", "touch pwned"},
 		{"include.path", "/tmp/evil.config"},
+		{"http.proxy", "http://127.0.0.1:1"},
+		{"http.sslVerify", "false"},
+		{"remote.origin.proxy", "http://127.0.0.1:1"},
+		{"extensions.worktreeConfig", "true"},
 	}
 	for _, c := range cases {
 		t.Run(c[0], func(t *testing.T) {
@@ -424,6 +477,46 @@ func TestRemoteRefusesUntrustedLocalConfig(t *testing.T) {
 				t.Fatal("a program from .git/config ran")
 			}
 		})
+	}
+}
+
+func TestNetworkSetupIgnoresDroppedSSHEnv(t *testing.T) {
+	// isolate() gives this test a clean HOME: no global core.sshCommand.
+	g, _ := newGit(t)
+	t.Setenv("GIT_SSH_COMMAND", "ssh -i /tmp/evil")
+	t.Setenv("GIT_SSH", "/tmp/evil-ssh")
+
+	_, env := g.networkSetup(context.Background())
+	const want = "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=20"
+	found := false
+	for _, kv := range env {
+		if strings.Contains(kv, "/tmp/evil") {
+			t.Fatalf("networkSetup kept ssh env %q", kv)
+		}
+		if kv == want {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("networkSetup env = %v, want %q", env, want)
+	}
+}
+
+func TestNetworkSetupHonorsGlobalSSHCommand(t *testing.T) {
+	g, _ := newGit(t)
+	// SanitizeEnv drops GIT_CONFIG_GLOBAL, but keeps HOME: git reads the
+	// trusted global config from ~/.gitconfig.
+	home := os.Getenv("HOME")
+	cfg := "[core]\n\tsshCommand = ssh -i /trusted/key\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, env := g.networkSetup(context.Background())
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "GIT_SSH_COMMAND=") {
+			t.Fatalf("networkSetup overrode trusted global core.sshCommand: %q", kv)
+		}
 	}
 }
 
@@ -454,6 +547,7 @@ func TestHTTPSAuthFailsFastWithoutPromptAndScrubs(t *testing.T) {
 	defer srv.Close()
 
 	g, root := newGit(t)
+	g.allowLocal = true // loopback test server
 	g.remoteTimeout = 20 * time.Second
 	ctx := context.Background()
 	if _, err := g.Init(ctx, "main"); err != nil {
@@ -502,6 +596,7 @@ func TestRemoteTimeoutKillsStuckConnection(t *testing.T) {
 	}()
 
 	g, root := newGit(t)
+	g.allowLocal = true // loopback test listener
 	g.remoteTimeout = 2 * time.Second
 	ctx := context.Background()
 	if _, err := g.Init(ctx, "main"); err != nil {

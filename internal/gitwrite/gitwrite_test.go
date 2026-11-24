@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"ngodingmcp/internal/gitutil"
 	"ngodingmcp/internal/workspace"
 )
 
@@ -62,6 +63,31 @@ func gitOut(t *testing.T, root string, args ...string) string {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func TestRunCapsHugeOutput(t *testing.T) {
+	g, root := newGit(t)
+	gitOut(t, root, "init", "-q")
+	write(t, root, "f.txt", "data")
+	gitOut(t, root, "add", "f.txt")
+	commit := exec.Command("git", "commit", "-q", "-F", "-")
+	commit.Dir = root
+	commit.Stdin = strings.NewReader(strings.Repeat("x", 300<<10))
+	if out, err := commit.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v: %.200s", err, out)
+	}
+
+	out, _, err := g.run(context.Background(), runOpts{}, "log", "-1", "--format=%B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The truncation notice is allowed on top of the cap.
+	if len(out) > gitutil.MaxOutputBytes+len("\n[git output truncated]") {
+		t.Fatalf("captured %d bytes, limit is %d", len(out), gitutil.MaxOutputBytes)
+	}
+	if !strings.Contains(out, "[git output truncated]") {
+		t.Fatal("huge output was capped without a notice")
+	}
 }
 
 func TestInitAddCommit(t *testing.T) {

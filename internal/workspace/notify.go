@@ -17,19 +17,25 @@ type changeHub struct {
 	seq  atomic.Uint64
 	mu   sync.Mutex
 	subs map[chan ChangeEvent]struct{}
+
+	// testAfterNotify pauses a notification after it is queued so tests can
+	// force an interleaving. Test-only.
+	testAfterNotify func()
 }
 
 // notify is always called on &w.hub (a value field of Workspace), so h is
 // never nil.
 func (h *changeHub) notify(op, relPath, from string) {
-	seq := h.seq.Add(1)
+	// Allocate the sequence number while holding the same lock that queues
+	// the event. Otherwise two concurrent mutations can take numbers in one
+	// order and enqueue in the other, and SSE clients see time go backwards.
+	h.mu.Lock()
 	ev := ChangeEvent{
-		Seq:  seq,
+		Seq:  h.seq.Add(1),
 		Op:   op,
 		Path: relPath,
 		From: from,
 	}
-	h.mu.Lock()
 	for ch := range h.subs {
 		select {
 		case ch <- ev:
@@ -38,6 +44,9 @@ func (h *changeHub) notify(op, relPath, from string) {
 		}
 	}
 	h.mu.Unlock()
+	if h.testAfterNotify != nil {
+		h.testAfterNotify()
+	}
 }
 
 // Revision returns a monotonically increasing counter bumped on every

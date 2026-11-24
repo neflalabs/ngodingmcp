@@ -23,13 +23,18 @@
   Browser menolak request state-changing dari origin lain
   (`http.CrossOriginProtection`). Endpoint REST yang menerima JSON wajib
   `Content-Type: application/json` (yang lain 415).
-- Token kustom yang di-set lewat Web UI minimal 32 karakter.
+- Token kustom baru yang di-set lewat Web UI minimal 32 karakter. Token lama
+  yang sudah tersimpan boleh tetap dipakai selama tidak diubah (grandfather);
+  ganti ke token ≥32 karakter disarankan.
 - `/mcp` juga mendukung OAuth 2.1 sesuai MCP spec: resource server + authorization
   server embedded. Access token ES256 terikat audience ke server ini (RFC 8707),
   PKCE S256 wajib untuk code exchange, refresh token rotasi setiap dipakai.
-  Refresh token disimpan di `oauth.json` hanya sebagai hash SHA-256 (file
-  `0600`), jadi restart server tidak memaksa consent ulang dan isi file tidak
-  bisa dipakai untuk refresh. Detail: [oauth.md](oauth.md).
+  Rotasi dan deteksi replay berada dalam satu critical section; penanda token
+  yang sudah dipakai bertahan selama penerusnya masih valid, jadi replay
+  paralel maupun replay terlambat mencabut seluruh keluarga token. Refresh token
+  disimpan di `oauth.json` hanya sebagai hash SHA-256 (file `0600`), jadi restart
+  server tidak memaksa consent ulang dan isi file tidak bisa dipakai untuk
+  refresh. Detail: [oauth.md](oauth.md).
 - OAuth tetap menggunakan token statis sebagai jalur autentikasi tambahan.
 - Token dikirim sebagai header biasa. Jalankan di `localhost`, atau taruh di
   belakang reverse proxy TLS kalau diakses dari jaringan lain (lihat `trusted-proxy`
@@ -48,6 +53,11 @@
   symlink yang keluar root ditolak saat diakses. Jangan menaruh symlink ke luar
   root kalau tidak yakin.
 - Write atomik (temp file lalu `rename`), batas ukuran baca, dan deteksi file biner.
+  FIFO, device, dan socket ditolak saat resolusi path: `open` pada FIFO bisa
+  menunggu penulis tanpa batas dan `rename` bisa menimpa pipe tanpa sadar.
+  Symlink ke file khusus ikut ditolak.
+- `move_path` menolak menimpa tujuan yang sudah ada (file, direktori, atau symlink);
+  hapus tujuan dulu atau pilih nama lain.
 - **Error tanpa path host**: pesan error tool tidak pernah memuat path absolut
   workspace di host; path diganti menjadi path relatif terhadap root.
 - `write_file` bersifat destruktif (menimpa file). Gunakan `replace_text` untuk
@@ -71,8 +81,10 @@ Diblokir secara default:
 
 File ini tidak bisa dibaca/ditulis/diedit, disembunyikan dari list, search, stats,
 dan count, dan delete rekursif ditolak kalau foldernya berisi file tersebut.
-Matikan dengan `--allow-sensitive` (atau `NGODINGMCP_ALLOW_SENSITIVE=true`, toggle
-di TUI, atau setelan per workspace di Web UI) hanya kalau perlu.
+Matikan dengan `--allow-sensitive` (atau `NGODINGMCP_ALLOW_SENSITIVE=true`, field
+`allowSensitive` di `config.json` lewat toggle TUI/Web UI, atau setelan per workspace
+di Web UI) hanya kalau perlu. Field `config.json` ikut aturan urutan flag > env >
+config, jadi tetap aktif setelah restart service.
 
 Catatan: pencarian & statistik melewati direktori dependensi/cache build
 (`node_modules`, `.next`, `.venv`, `__pycache__`, dll.) terlepas dari pengaturan
@@ -93,15 +105,26 @@ incl. direktori tersebut supaya penghapusan tidak sengaja terdeteksi.
   textconv, jadi tidak ada program dari config repo yang ikut jalan. **Semua
   tool git** (baca dan tulis) menolak jalan kalau `.git/config` sendiri
   mengatur credential helper, ssh command, askpass, `insteadOf`,
-  upload/receive-pack, filter, merge driver, atau include — bukan hanya tool
-  remote dan merge.
+  upload/receive-pack, filter, merge driver, include, `http.*`
+  (proxy/`sslVerify`/`sslCAInfo`/`extraHeader`, termasuk varian per-URL),
+  `remote.*.proxy`, atau `extensions.worktreeConfig` — bukan hanya tool
+  remote dan merge. `config.worktree` ikut ditolak karena guard `--local` tidak
+  membacanya.
 - Subprocess git menerima environment **tanpa variabel `GIT_*`** yang mengarahkan
   git (fsmonitor, diff.external, config path, ssh variant, template dir, dst.).
   Variabel rahasia umum (mis. `GITHUB_TOKEN`) tetap diwariskan ke subprocess
   git — yang menghentikan eksekusi kode dari repo adalah penonaktifan hook/
   filter/fsmonitor/external diff di atas dan penolakan `CheckLocalConfig`,
   bukan penyaringan environment.
-- Remote hanya https dan ssh (`GIT_ALLOW_PROTOCOL=https:ssh`); kredensial di URL
+- `GIT_SSH_COMMAND` dan `GIT_SSH` dari environment sengaja dibuang: keduanya
+  berisi string shell yang bisa menjalankan program. Default ssh aman
+  (`BatchMode=yes`, `ConnectTimeout=20`) selalu dipakai kecuali
+  `core.sshCommand` di config global menggantinya. Butuh opsi ssh kustom?
+  Taruh di `~/.gitconfig` atau `~/.ssh/config`, bukan di environment.
+- Remote hanya https dan ssh (`GIT_ALLOW_PROTOCOL=https:ssh`) dengan host publik:
+  loopback, private, link-local (termasuk `169.254.169.254`), `localhost`, dan
+  hostname yang resolve ke alamat non-publik ditolak saat add/set-url serta
+  dicek ulang sebelum fetch/pull/push. Redirect HTTP dimatikan. Kredensial di URL
   disensor dari output dan URL remote tidak masuk log aktivitas. Tool remote tidak
   pernah meminta input (tanpa prompt, ssh BatchMode, timeout 2 menit).
 - `git_add` melewati file sensitif dan file ignored; commit ditolak kalau ada file
@@ -116,7 +139,9 @@ Detail: [tools.md](tools.md#git).
   tepercaya. Allowlist adalah batas kepercayaan: `go test` tetap bisa menjalankan
   kode dari workspace. Flag yang mem-bypass review dimatikan meski lolos
   allowlist (mis. `-exec`/`-toolexec`, `--no-index` untuk `git diff`,
-  `-vettool` untuk `go vet`, `--output`).
+  `-vettool` untuk `go vet`, `--output`). Argumen path absolut, `..`, dan
+  symlink yang keluar root juga ditolak. Ini tetap bukan sandbox OS: `go test`
+  bisa menjalankan kode workspace, jadi aktifkan hanya untuk workspace tepercaya.
 - `start_process`/`stop_process` dapat menyalakan dan mematikan proses; seluruh
   proses dimatikan saat server shutdown.
 - `download_file` hanya ke host https publik; alamat privat/loopback/metadata cloud

@@ -78,15 +78,28 @@ func (w *Workspace) ReadFile(rel string, offset, limit int) (ReadResult, error) 
 }
 
 // WriteFile writes content to rel atomically, creating parent directories.
+// The whole operation is serialized with other writes and edits.
 func (w *Workspace) WriteFile(rel, content string) (string, int, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+	return w.writeFileLocked(rel, content)
+}
+
+// writeFileLocked is WriteFile without taking writeMu. Callers that already
+// hold writeMu must use this to avoid a self-deadlock.
+func (w *Workspace) writeFileLocked(rel, content string) (string, int, error) {
 	full, err := w.resolve(rel)
 	if err != nil {
 		return "", 0, err
 	}
-	if info, err := os.Stat(full); err == nil && info.IsDir() {
+	target, err := w.writeTarget(full)
+	if err != nil {
+		return "", 0, err
+	}
+	if info, err := os.Stat(target); err == nil && info.IsDir() {
 		return "", 0, ErrIsDir
 	}
-	dir := filepath.Dir(full)
+	dir := filepath.Dir(target)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", 0, err
 	}
@@ -105,13 +118,13 @@ func (w *Workspace) WriteFile(rel, content string) (string, int, error) {
 	}
 	// Keep the mode of an existing file; only new files get 0644.
 	chmod := os.FileMode(0o644)
-	if st, err := os.Stat(full); err == nil {
+	if st, err := os.Stat(target); err == nil {
 		chmod = st.Mode().Perm()
 	}
 	if err := os.Chmod(tmpName, chmod); err != nil {
 		return "", 0, err
 	}
-	if err := os.Rename(tmpName, full); err != nil {
+	if err := os.Rename(tmpName, target); err != nil {
 		return "", 0, err
 	}
 	relp := w.relPath(full)
@@ -121,6 +134,8 @@ func (w *Workspace) WriteFile(rel, content string) (string, int, error) {
 
 // ReplaceText replaces occurrences of old with new inside rel.
 func (w *Workspace) ReplaceText(rel, old, new string, all bool) (string, int, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	if old == "" {
 		return "", 0, errors.New("old text must not be empty")
 	}
@@ -139,7 +154,7 @@ func (w *Workspace) ReplaceText(rel, old, new string, all bool) (string, int, er
 		return "", 0, fmt.Errorf("old text occurs %d times; provide more context or set replace_all=true", count)
 	}
 	updated := strings.Replace(content, old, new, n)
-	if _, _, err := w.WriteFile(w.relPath(full), updated); err != nil {
+	if _, _, err := w.writeFileLocked(w.relPath(full), updated); err != nil {
 		return "", 0, err
 	}
 	return w.relPath(full), n, nil
@@ -148,6 +163,8 @@ func (w *Workspace) ReplaceText(rel, old, new string, all bool) (string, int, er
 // InsertText inserts text before the given 1-based line. line may be
 // totalLines+1 to append at the end.
 func (w *Workspace) InsertText(rel string, line int, text string) (string, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	full, content, err := w.readAll(rel)
 	if err != nil {
 		return "", err
@@ -171,7 +188,7 @@ func (w *Workspace) InsertText(rel string, line int, text string) (string, error
 		off := lineStartOffset(content, line)
 		content = content[:off] + text + content[off:]
 	}
-	if _, _, err := w.WriteFile(w.relPath(full), content); err != nil {
+	if _, _, err := w.writeFileLocked(w.relPath(full), content); err != nil {
 		return "", err
 	}
 	return w.relPath(full), nil
@@ -179,6 +196,8 @@ func (w *Workspace) InsertText(rel string, line int, text string) (string, error
 
 // DeleteLines deletes the inclusive 1-based line range [from, to].
 func (w *Workspace) DeleteLines(rel string, from, to int) (string, int, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	full, content, err := w.readAll(rel)
 	if err != nil {
 		return "", 0, err
@@ -196,7 +215,7 @@ func (w *Workspace) DeleteLines(rel string, from, to int) (string, int, error) {
 		end = len(content)
 	}
 	updated := content[:start] + content[end:]
-	if _, _, err := w.WriteFile(w.relPath(full), updated); err != nil {
+	if _, _, err := w.writeFileLocked(w.relPath(full), updated); err != nil {
 		return "", 0, err
 	}
 	return w.relPath(full), countLines(updated), nil
@@ -206,6 +225,8 @@ func (w *Workspace) DeleteLines(rel string, from, to int) (string, int, error) {
 // newContent, writing the result atomically via WriteFile.
 // Returns the relative path and new total line count.
 func (w *Workspace) ReplaceLines(rel string, from, to int, newContent string) (string, int, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	full, content, err := w.readAll(rel)
 	if err != nil {
 		return "", 0, err
@@ -226,7 +247,7 @@ func (w *Workspace) ReplaceLines(rel string, from, to int, newContent string) (s
 		end = len(content)
 	}
 	updated := content[:start] + newContent + content[end:]
-	if _, _, err := w.WriteFile(w.relPath(full), updated); err != nil {
+	if _, _, err := w.writeFileLocked(w.relPath(full), updated); err != nil {
 		return "", 0, err
 	}
 	return w.relPath(full), countLines(updated), nil

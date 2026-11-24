@@ -39,7 +39,8 @@ Token statis (`Authorization: Bearer` / `X-API-Key`) tetap diterima.
   + ULA), `none` (tidak ada). Selebihnya CIDR atau IP (misal `103.21.244.0/22`, atau range IP
   Cloudflare dari <https://www.cloudflare.com/ips/>).
 - `-oauth` (`NGODINGMCP_OAUTH`, `config.json` `oauth`, Web UI **⚙ Settings**): default **aktif**.
-  `--oauth=false` mematikan authorization server; `/mcp` hanya menerima token statis.
+  `--oauth=false` mematikan authorization server; `/mcp` hanya menerima token statis
+  (`Authorization: Bearer` atau `X-API-Key`). Cookie sesi Web UI tidak diterima di `/mcp`.
 
 Derivasi issuer tanpa `-public-url`: host diambil dari header `Host` (dinormalisasi secara sintaks,
 nilai aneh ditolak), scheme `https` hanya jika koneksi TLS ke proses, atau `http(s)` dari
@@ -64,7 +65,8 @@ file `0600`, ditulis atomik (file sementara lalu rename).
   family, dan waktu kedaluwarsanya. Token mentahnya tidak pernah ditulis ke disk, jadi isi file ini
   tidak bisa dipakai untuk refresh. Restart service **tidak** memaksa client authorize ulang.
 - Token yang sudah dirotasi juga disimpan sebagai hash (`consumedRefreshTokens`), supaya token lama
-  yang dipakai ulang setelah restart tetap mencabut seluruh keluarganya.
+  yang dipakai ulang setelah restart tetap mencabut seluruh keluarganya. Penanda ini berlaku selama
+  token penerusnya masih bisa dipakai, bukan hanya sampai token lama kedaluwarsa.
 - File ditulis ulang setiap refresh token diterbitkan, dirotasi, atau keluarganya dicabut. Entri yang
   sudah kedaluwarsa dibuang saat file dibaca dan saat ditulis.
 - Authorization code dan token CSRF tetap hanya di memori (umurnya cuma menit).
@@ -84,7 +86,9 @@ Access token selalu bisa diverifikasi lewat `GET /oauth/jwks.json`.
   dengan pesan penjelas. `last_used_at` diperbarui saat client berhasil menukar
   token dan disimpan di `oauth.json`.
 - Tidak ada endpoint revoke (RFC 7009). Refresh token dirotasi setiap dipakai; token lama yang
-  dipakai ulang mencabut seluruh keluarga token (RFC 6819 §5.2.2.3). Restart server **tidak** lagi
+  dipakai ulang mencabut seluruh keluarga token (RFC 6819 §5.2.2.3). Rotasi, deteksi replay, dan
+  penerbitan penerus terjadi dalam satu critical section, jadi replay paralel tidak bisa mencabut
+  keluarga sebelum token penerus tersimpan. Restart server **tidak** lagi
   mencabut refresh token; untuk mencabut semuanya, hentikan server lalu hapus `oauth.json` (client
   terdaftar dan signing key ikut terhapus, jadi semua client perlu menyambung ulang).
 - Hanya client publik (`token_endpoint_auth_method: none`). Tidak mendukung client secret.

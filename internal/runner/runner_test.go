@@ -90,6 +90,31 @@ func TestRunTimeout(t *testing.T) {
 	}
 }
 
+func TestRunCallerDeadlineIsNotRunnerTimeout(t *testing.T) {
+	t.Setenv("RUNNER_HELPER_SLEEP", "5s")
+	r, err := New(Options{
+		Root:      t.TempDir(),
+		Allowlist: []string{os.Args[0]},
+		Timeout:   10 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	// The caller gives up long before the runner's own 10s timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	res, err := r.Run(ctx, []string{os.Args[0], "-test.run=TestRunnerHelperSleep", "--"})
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want caller deadline error", err)
+	}
+	if !errors.Is(err, ErrCallerDeadline) {
+		t.Fatalf("err = %v, want ErrCallerDeadline", err)
+	}
+	if res.TimedOut {
+		t.Fatal("caller deadline reported as runner timeout")
+	}
+}
+
 func TestRunTruncatesOutput(t *testing.T) {
 	t.Setenv("RUNNER_HELPER_OUTPUT", "1")
 	r, err := New(Options{

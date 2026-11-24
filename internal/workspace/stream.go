@@ -104,9 +104,20 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 			return StreamResult{}, err
 		}
 	}
+	// Serialize the placement with other mutations (edits, writes) so a
+	// concurrent read-modify-write cannot clobber the just-uploaded file.
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
+	target := full
+	if opts.Overwrite {
+		target, err = w.writeTarget(full)
+		if err != nil {
+			return StreamResult{}, err
+		}
+	}
 	// Keep the mode of an existing file; only new files get 0644.
 	chmod := os.FileMode(0o644)
-	if st, err := os.Stat(full); err == nil {
+	if st, err := os.Stat(target); err == nil {
 		chmod = st.Mode().Perm()
 	}
 	if err := os.Chmod(tmpName, chmod); err != nil {
@@ -132,7 +143,7 @@ func (w *Workspace) WriteStream(rel string, r io.Reader, opts StreamOptions) (St
 	if _, err := w.CheckWritable(relp, true); err != nil {
 		return StreamResult{}, err
 	}
-	if err := os.Rename(tmpName, full); err != nil {
+	if err := os.Rename(tmpName, target); err != nil {
 		return StreamResult{}, err
 	}
 	w.hub.notify("write", relp, "")

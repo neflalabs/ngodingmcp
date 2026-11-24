@@ -228,7 +228,7 @@ func New(cfg Config) (*Server, error) {
 		logOAuthIssuer(logger, cfg)
 	} else {
 		logger.Warn("OAuth disabled; /mcp accepts only the static token")
-		mcpAuth = authn.API
+		mcpAuth = authn.Machine
 	}
 
 	mux := http.NewServeMux()

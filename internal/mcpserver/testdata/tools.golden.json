@@ -906,7 +906,7 @@
       "idempotentHint": false,
       "readOnlyHint": false
     },
-    "description": "Move or rename a file or directory.",
+    "description": "Move or rename a file or directory; refuses to overwrite an existing destination.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

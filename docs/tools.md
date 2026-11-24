@@ -55,7 +55,9 @@ yang diteruskan ke model, jadi isi yang sama tidak dikirim dua kali:
   mengirim `structuredContent`, tapi tanpa `outputSchema`.
 - `file_info` dan `list_processes` tetap punya `outputSchema`.
 - Exit code `run_command` ada di teks dan di `_meta`
-  (`ngodingmcp/exitCode`, `ngodingmcp/timedOut`).
+  (`ngodingmcp/exitCode`, `ngodingmcp/timedOut`). `ngodingmcp/timedOut` hanya
+  berarti timeout batas server; deadline pemanggil menghasilkan error
+  `caller deadline exceeded` tanpa hasil `timedOut`.
 
 ## Tool inti (selalu aktif)
 
@@ -87,7 +89,20 @@ Perilaku umum:
   batas sampai 2000. Output yang terpotong ditandai `truncated: true` dan
   menyertakan notice "listing truncated at N entries".
 - **Write atomik**: setiap tulis memakai temp file lalu `rename`, jadi tidak ada
-  file setengah jadi.
+  file setengah jadi. Operasi tulis/editor (`replace_text`, `edit_file`,
+  `search_and_replace`, upload) diserialisasi, jadi edit konkuren tak saling
+  menimpa.
+- **`search_and_replace` sebagian tak ditinggalkan**: kalau satu file gagal
+  ditulis, semua file yang sudah berubah dikembalikan ke isi semula. Error
+  menyebut jumlah file yang dikembalikan, atau file yang gagal dikembalikan
+  kalau pun ada. Per-file tetap atomik (temp file lalu `rename`).
+- **Symlink tidak rusak saat ditulis**: kalau komponen terakhir path adalah
+  symlink, tulis mengikuti link ke targetnya. Symlink rusak (target hilang)
+  ditolak, bukan diganti file biasa.
+- **File khusus ditolak**: FIFO, device, dan socket tidak bisa dibaca maupun
+   ditulis lewat tool workspace. Membuka FIFO tanpa penulis bisa menggantung
+   server, jadi path ditolak sebelum `open`, termasuk lewat symlink `link -> pipe`.
+   Pemindaian `search`/`stats` juga melewati entri tersebut.
 - **Batas ukuran baca** (`--max-file-bytes`, default 2 MiB) dan deteksi file biner.
 - `write_file` bersifat destruktif (menimpa seluruh file) dan hanya menerima teks.
   Untuk edit kecil pakai `replace_text`; untuk file biner pakai `download_file`
@@ -138,6 +153,9 @@ saja tanpa menulis.
   patch (dibatasi 256 KiB, notice `truncated`). Opsi lain: `staged`, `stat`, `ref`.
 - `git_log`: default 10 commit satu baris (`limit`, maks 200); `body: true`
   menambahkan isi body commit.
+- Output git dibatasi 256 KiB **saat dibaca**, tidak ditampung seluruhnya di
+  memory. Tool baca menandai `truncated: true`; tool tulis menambahkan baris
+  `[git output truncated]` kalau output terpotong.
 
 Kalau workspace bukan repo git, tool membalas pesan penjelasan (arahkan ke
 `git_init`), bukan error. External diff, textconv, pager, dan fsmonitor dimatikan,
@@ -203,12 +221,19 @@ Pengaman remote:
   `git://`, `http://`, dan `ext::` ditolak. Saat fetch/pull/push, `GIT_ALLOW_PROTOCOL`
   juga dikunci ke `https:ssh`, jadi remote lama yang menunjuk ke path lokal ikut
   ditolak.
+- Host remote harus publik: `localhost`, IP loopback/private/link-local
+  (termasuk `169.254.169.254`), dan hostname yang resolvenya mengandung alamat
+  non-publik ditolak. Cek dilakukan saat `git_remote add/set_url` dan diulang
+  pada URL yang tersimpan di `.git/config` sebelum fetch/pull/push. Redirect
+  HTTP dimatikan supaya host publik tidak bisa mengalihkan ke host internal.
 - Kredensial di URL (`user:token@`) disensor jadi `***@` di semua output dan
   error. URL remote tidak pernah masuk log aktivitas.
 - Setelan program dari `.git/config` repo tidak dipercaya: kalau repo sendiri
   mengatur `credential.helper`, `core.sshCommand`, `core.askPass`,
   `url.*.insteadOf`, `remote.*.uploadpack/receivepack`, `filter.*`,
-  `merge.*.driver`, atau `include`, tool remote dan merge menolak jalan. Taruh
+  `merge.*.driver`, `include`, `http.*` (proxy/`sslVerify`/`extraHeader`,
+   termasuk varian per-URL), `remote.*.proxy`, atau `extensions.worktreeConfig`,
+   tool git menolak jalan. Taruh
   setelan seperti itu di `~/.gitconfig`.
 - Tidak pernah menunggu input: `GIT_TERMINAL_PROMPT=0`, askpass dimatikan, ssh
   `BatchMode=yes`, proses jalan tanpa terminal, dan ada timeout 2 menit yang
@@ -222,7 +247,10 @@ langsung terpakai:
 
 - **SSH** (`git@github.com:...`): key di `~/.ssh` tanpa passphrase, atau key yang
   sudah di-`ssh-add` ke ssh-agent. Host key harus sudah dikenal: jalankan sekali
-  `ssh -T git@github.com` di terminal.
+  `ssh -T git@github.com` di terminal. `GIT_SSH_COMMAND`/`GIT_SSH` dari
+  environment tidak dipakai (string shell bisa menyuntik program); opsi kustom
+  taruh di `core.sshCommand` pada `~/.gitconfig` atau `~/.ssh/config`. Tanpa
+  itu, ssh jalan dengan `BatchMode=yes -o ConnectTimeout=20`.
 - **HTTPS**: credential helper di config global. Untuk GitHub paling mudah
   `gh auth login` lalu `gh auth setup-git`. Jangan taruh token di URL remote.
 - **`git_github_create_repo` & GitHub Actions tools**: butuh `gh` terpasang dan

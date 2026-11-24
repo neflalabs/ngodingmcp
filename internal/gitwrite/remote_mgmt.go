@@ -4,10 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/netip"
 	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"ngodingmcp/internal/fetch"
 )
 
 // Remote is one configured remote. URLs have credentials scrubbed.
@@ -68,7 +72,7 @@ func (g *Git) AddRemote(ctx context.Context, name, rawURL string) (string, error
 	if err := ValidRemoteName(name); err != nil {
 		return "", err
 	}
-	u, err := g.validRemoteURL(rawURL)
+	u, err := g.validRemoteURL(ctx, rawURL)
 	if err != nil {
 		return "", err
 	}
@@ -93,7 +97,7 @@ func (g *Git) SetRemoteURL(ctx context.Context, name, rawURL string) (string, er
 	if err := ValidRemoteName(name); err != nil {
 		return "", err
 	}
-	u, err := g.validRemoteURL(rawURL)
+	u, err := g.validRemoteURL(ctx, rawURL)
 	if err != nil {
 		return "", err
 	}
@@ -155,7 +159,7 @@ var (
 // ssh://[user@]host[:port]/path and scp-like [user@]host:path. Everything
 // else (file://, local paths, git://, http://, ext:: and other transport
 // helpers) is refused. It returns the trimmed URL.
-func (g *Git) validRemoteURL(raw string) (string, error) {
+func (g *Git) validRemoteURL(ctx context.Context, raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	refused := fmt.Errorf("remote URL %q is not allowed: use https://host/owner/repo.git or ssh (git@host:owner/repo.git, ssh://git@host/owner/repo.git); local paths, file://, git://, http:// and transport helpers such as ext:: are refused", ScrubCredentials(raw))
 	if raw == "" {
@@ -195,6 +199,9 @@ func (g *Git) validRemoteURL(raw string) (string, error) {
 		default:
 			return "", refused
 		}
+		if err := g.checkRemoteURLHost(ctx, raw); err != nil {
+			return "", err
+		}
 		return raw, nil
 	}
 	if scpLike.MatchString(raw) {
@@ -202,9 +209,84 @@ func (g *Git) validRemoteURL(raw string) (string, error) {
 		if strings.HasPrefix(path, "-") {
 			return "", refused
 		}
+		if err := g.checkRemoteURLHost(ctx, raw); err != nil {
+			return "", err
+		}
 		return raw, nil
 	}
 	return "", refused
+}
+
+// errRemoteHost is returned when a remote points at a non-public address.
+var errRemoteHost = errors.New("remote host is not public; git remotes may only reach public https/ssh hosts")
+
+// checkRemoteURLHost applies the SSRF guard to an already parsed remote URL,
+// or to the URL stored in .git/config before a network command runs.
+func (g *Git) checkRemoteURLHost(ctx context.Context, raw string) error {
+	if g.allowLocal { // tests use a bare repo on disk and loopback servers
+		return nil
+	}
+	raw = strings.TrimSpace(raw)
+	if !strings.Contains(raw, "://") && !scpLike.MatchString(raw) {
+		return nil // local path or helper transport; GIT_ALLOW_PROTOCOL handles it
+	}
+	host := remoteHost(raw)
+	if host == "" {
+		return errRemoteHost
+	}
+	return g.checkRemoteHost(ctx, host)
+}
+
+// remoteHost extracts the host from an https/ssh URL or an scp-like remote.
+func remoteHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return ""
+		}
+		return u.Hostname()
+	}
+	userHost, _, ok := strings.Cut(raw, ":")
+	if !ok {
+		return ""
+	}
+	if i := strings.LastIndex(userHost, "@"); i >= 0 {
+		userHost = userHost[i+1:]
+	}
+	return userHost
+}
+
+// checkRemoteHost refuses loopback, private, link-local and other non-public
+// hosts, including IP literals and localhost names. DNS failures are left to
+// git: this is a pre-flight check, not a dial-time guarantee.
+func (g *Git) checkRemoteHost(ctx context.Context, raw string) error {
+	host := raw
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(strings.TrimSuffix(host, "."), "[]")
+	lower := strings.ToLower(host)
+	if lower == "localhost" || strings.HasSuffix(lower, ".localhost") {
+		return errRemoteHost
+	}
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if !fetch.IsPublicIP(ip) {
+			return errRemoteHost
+		}
+		return nil
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		ip, ok := netip.AddrFromSlice(a.IP)
+		if !ok || !fetch.IsPublicIP(ip) {
+			return errRemoteHost
+		}
+	}
+	return nil
 }
 
 var urlUserinfo = regexp.MustCompile(`(?i)\b([a-z][a-z0-9+.-]*)://([^/\s@'"]+)@`)

@@ -32,7 +32,6 @@ import (
 	"errors"
 	"fmt"
 	"ngodingmcp/internal/gitutil"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -414,6 +413,17 @@ func (g *Git) prepareNetwork(ctx context.Context, remote string) error {
 	if err := g.requireRemote(ctx, remote); err != nil {
 		return err
 	}
+	// A remote can be written straight into .git/config (for example by a
+	// clone). Recheck the stored URLs, not just the ones git_remote accepted.
+	for _, key := range []string{"remote." + remote + ".url", "remote." + remote + ".pushurl"} {
+		raw, _ := g.git(ctx, "", "config", "--get", key)
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		if err := g.checkRemoteURLHost(ctx, raw); err != nil {
+			return err
+		}
+	}
 	return g.checkLocalConfig(ctx)
 }
 
@@ -440,6 +450,9 @@ func (g *Git) networkSetup(ctx context.Context) (config, env []string) {
 		"-c", "http.lowSpeedLimit=1000",
 		"-c", "http.lowSpeedTime=30",
 		"-c", "credential.interactive=false",
+		// A public host redirecting to a private one must not bypass the
+		// pre-flight host check.
+		"-c", "http.followRedirects=false",
 	}
 	protocols := "https:ssh"
 	if g.allowLocal {
@@ -456,11 +469,12 @@ func (g *Git) networkSetup(ctx context.Context) (config, env []string) {
 		"SSH_ASKPASS_REQUIRE=never",
 		"GCM_INTERACTIVE=never",
 	}
-	if os.Getenv("GIT_SSH_COMMAND") == "" && os.Getenv("GIT_SSH") == "" {
-		custom, _ := g.git(ctx, "", "config", "--get", "core.sshCommand")
-		if strings.TrimSpace(custom) == "" {
-			env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=20")
-		}
+	// SanitizeEnv drops GIT_SSH_COMMAND/GIT_SSH from the environment, so an
+	// operator-supplied value must never suppress the safe default here.
+	// Only trusted global/system core.sshCommand may replace it.
+	custom, _ := g.git(ctx, "", "config", "--get", "core.sshCommand")
+	if strings.TrimSpace(custom) == "" {
+		env = append(env, "GIT_SSH_COMMAND=ssh -o BatchMode=yes -o ConnectTimeout=20")
 	}
 	return config, env
 }

@@ -126,6 +126,41 @@ func TestParseServerFlagsAllowSensitive(t *testing.T) {
 		t.Error("NGODINGMCP_ALLOW_SENSITIVE=true did not set allowSensitive")
 	}
 }
+func TestParseServerFlagsAllowSensitiveFromConfig(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("XDG_CONFIG_HOME override is Linux-specific")
+	}
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("NGODINGMCP_ALLOW_SENSITIVE", "")
+	if err := config.Save(config.Config{AllowSensitive: true}); err != nil {
+		t.Fatalf("config.Save: %v", err)
+	}
+
+	// A fresh `serve` after a Web UI/TUI save is the restart case.
+	opts, err := parseServerFlags(nil)
+	if err != nil {
+		t.Fatalf("parseServerFlags: %v", err)
+	}
+	if !opts.allowSensitive {
+		t.Error("allowSensitive = false, want true from config.json")
+	}
+	opts, err = parseServerFlags([]string{"--allow-sensitive=false"})
+	if err != nil {
+		t.Fatalf("parseServerFlags: %v", err)
+	}
+	if opts.allowSensitive {
+		t.Error("flag did not override config.json")
+	}
+	t.Setenv("NGODINGMCP_ALLOW_SENSITIVE", "false")
+	opts, err = parseServerFlags(nil)
+	if err != nil {
+		t.Fatalf("parseServerFlags: %v", err)
+	}
+	if opts.allowSensitive {
+		t.Error("env did not override config.json")
+	}
+}
+
 func TestParseServerFlagsDownload(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

@@ -8,6 +8,30 @@ import (
 	"testing"
 )
 
+func TestCappedBuffer(t *testing.T) {
+	b := NewCappedBuffer(4)
+	n, err := b.Write([]byte("abcdef"))
+	if err != nil || n != 6 {
+		t.Fatalf("Write = %d, %v; want 6, nil", n, err)
+	}
+	if got := b.String(); got != "abcd" {
+		t.Fatalf("kept %q, want %q", got, "abcd")
+	}
+	if !b.Truncated() {
+		t.Fatal("truncation not reported")
+	}
+
+	b = NewCappedBuffer(4)
+	b.Write([]byte("ab"))
+	b.Write([]byte("cdef"))
+	if got := b.String(); got != "abcd" {
+		t.Fatalf("kept %q across writes, want %q", got, "abcd")
+	}
+	if !b.Truncated() {
+		t.Fatal("truncation on a later write not reported")
+	}
+}
+
 func isolate(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {
@@ -48,6 +72,33 @@ func TestCheckLocalConfigRefusalInHostileRepo(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "filter.evil.process") {
 		t.Fatalf("err does not name the offending key: %v", err)
+	}
+}
+
+func TestCheckLocalConfigRefusesNetworkSteering(t *testing.T) {
+	for _, c := range [][2]string{
+		{"http.proxy", "http://127.0.0.1:1"},
+		{"http.https://example.com.sslVerify", "false"},
+		{"http.extraHeader", "X-Evil: 1"},
+		{"http.sslCAInfo", "/tmp/evil.pem"},
+		{"remote.origin.proxy", "http://127.0.0.1:1"},
+		{"extensions.worktreeConfig", "true"},
+	} {
+		t.Run(c[0], func(t *testing.T) {
+			root := initRepo(t)
+			cmd := exec.Command("git", "config", "--local", c[0], c[1])
+			cmd.Dir = root
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("git config: %v\n%s", err, out)
+			}
+			err := CheckLocalConfig(context.Background(), root)
+			if err == nil || !strings.Contains(err.Error(), "refusing to run") {
+				t.Fatalf("CheckLocalConfig(%s) err = %v", c[0], err)
+			}
+			if !strings.Contains(err.Error(), strings.ToLower(c[0])) {
+				t.Fatalf("err does not name %s: %v", c[0], err)
+			}
+		})
 	}
 }
 

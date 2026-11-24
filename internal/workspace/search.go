@@ -207,6 +207,8 @@ type plannedEdit struct {
 // If dryRun is true, no files are written; results show what would change.
 // maxFiles caps the number of files modified/previewed (default 50).
 func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun bool, maxFiles int) (SearchReplaceResult, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	if pattern == "" {
 		return SearchReplaceResult{}, errors.New("pattern must not be empty")
 	}
@@ -309,12 +311,23 @@ func (w *Workspace) SearchReplace(rel, pattern, replacement, glob string, dryRun
 	if len(stale) > 0 {
 		return SearchReplaceResult{}, fmt.Errorf("search_and_replace: %d file(s) changed while the workspace was scanned, nothing was written: %s", len(stale), strings.Join(stale, ", "))
 	}
-	applied := 0
-	for _, pe := range planned {
-		if _, _, err := w.WriteFile(pe.path, pe.updated); err != nil {
-			return SearchReplaceResult{}, fmt.Errorf("search_and_replace: wrote %d of %d file(s) before failing on %q: %w", applied, len(planned), pe.path, err)
+	for i, pe := range planned {
+		if _, _, err := w.writeFileLocked(pe.path, pe.updated); err != nil {
+			// A batch must not leave half the files replaced. Restore the
+			// ones already written, newest first, while writeMu is still
+			// held. Per-file writes are atomic, so each restore either
+			// works or leaves that file as it was before the batch.
+			var failed []string
+			for j := i - 1; j >= 0; j-- {
+				if _, _, rbErr := w.writeFileLocked(planned[j].path, planned[j].original); rbErr != nil {
+					failed = append(failed, fmt.Sprintf("%q: %v", planned[j].path, rbErr))
+				}
+			}
+			if len(failed) > 0 {
+				return SearchReplaceResult{}, fmt.Errorf("search_and_replace: failed on %q and could not restore %d file(s) [%s]: %w", pe.path, len(failed), strings.Join(failed, "; "), err)
+			}
+			return SearchReplaceResult{}, fmt.Errorf("search_and_replace: restored %d file(s) after failing on %q: %w", i, pe.path, err)
 		}
-		applied++
 	}
 	return result, nil
 }

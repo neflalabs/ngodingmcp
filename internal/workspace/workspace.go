@@ -22,6 +22,11 @@ var (
 	ErrOutsideRoot = errors.New("path is outside the workspace root")
 	// ErrIsDir is returned when a file operation targets a directory.
 	ErrIsDir = errors.New("path is a directory")
+	// ErrSpecialFile is returned for FIFOs, devices and sockets: opening them
+	// as files can block forever and a rename would silently replace them.
+	ErrSpecialFile = errors.New("special files are not supported")
+	// ErrRenameExists is returned when a move would overwrite an existing path.
+	ErrRenameExists = errors.New("destination already exists; refusing to overwrite")
 	// ErrNotDir is returned when a directory operation targets a file.
 	ErrNotDir = errors.New("path is not a directory")
 	// ErrTooLarge is returned when a file exceeds the maximum readable size.
@@ -38,7 +43,12 @@ type Workspace struct {
 	// gate is held for reading by every tool call or API request (Hold) and
 	// for writing while the workspace is switched (Switch).
 	gate sync.RWMutex
-	hub  changeHub
+	// writeMu serializes whole-file writes and read-modify-write operations,
+	// so concurrent edits on one file cannot overwrite each other.
+	// ponytail: process-local only; add expected_hash to edit tools when
+	// clients need stale detection across separate read/edit calls.
+	writeMu sync.Mutex
+	hub     changeHub
 }
 
 // state is the immutable root and settings of one workspace. A switch
@@ -122,16 +132,45 @@ func (w *Workspace) resolve(rel string) (string, error) {
 		return "", ErrSensitive
 	}
 	// A path whose resolved target is itself sensitive (e.g. `link.txt ->
-	// .env`, or a neutral name for a `.ssh` directory) must be refused the
-	// same way the target would be.
-	if _, err := os.Lstat(full); err == nil {
-		if resolved, err := filepath.EvalSymlinks(full); err == nil && resolved != full {
-			if w.blocked(resolved) {
-				return "", ErrSensitive
-			}
+	// .env`) must be refused the same way the target would be. Paths inside
+	// a symlinked sensitive directory are covered by checkSymlinkEscape.
+	if resolved, err := filepath.EvalSymlinks(full); err == nil && resolved != full {
+		if w.blocked(resolved) {
+			return "", ErrSensitive
 		}
 	}
+	// Stat follows symlinks, so `link -> pipe` is refused too. Opening a
+	// FIFO for reading waits forever without a writer, and writing through
+	// it would silently replace the pipe with a regular file.
+	if info, err := os.Stat(full); err == nil && !info.IsDir() && !info.Mode().IsRegular() {
+		return "", ErrSpecialFile
+	}
 	return full, nil
+}
+
+// writeTarget returns the real path a file write must land on. A symlink as
+// the final component has to be followed: renaming over it would replace the
+// link instead of updating the file it points at. resolve has already checked
+// the link target for escapes and sensitive paths.
+func (w *Workspace) writeTarget(full string) (string, error) {
+	info, err := os.Lstat(full)
+	if errors.Is(err, os.ErrNotExist) {
+		return full, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&fs.ModeSymlink == 0 {
+		return full, nil
+	}
+	target, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return "", fmt.Errorf("resolve symlink: %w", err)
+	}
+	if isOutside(w.Root(), target) {
+		return "", ErrOutsideRoot
+	}
+	return target, nil
 }
 
 // CleanPath validates rel exactly like every file operation does (inside the
@@ -225,6 +264,13 @@ func (w *Workspace) checkSymlinkEscape(full string) error {
 			}
 			if isOutside(w.Root(), resolved) {
 				return ErrOutsideRoot
+			}
+			// The deepest existing ancestor is a symlink: its target is the
+			// real parent of the requested path. A symlink into a sensitive
+			// directory (e.g. notes -> .ssh) must be treated as sensitive
+			// even when the requested file itself does not exist yet.
+			if resolved != p && w.blocked(resolved) {
+				return ErrSensitive
 			}
 			return nil
 		}

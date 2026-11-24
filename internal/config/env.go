@@ -45,10 +45,9 @@ type Settings struct {
 	RunExact   string // comma-separated exact commands; empty = built-in policy
 	RunTimeout time.Duration
 
-	// AllowSensitive comes from NGODINGMCP_ALLOW_SENSITIVE only, never from
-	// config.json, so a headless server never starts with the guard off
-	// without saying so on its command line or environment. (The TUI shows
-	// the toggle on screen and may still start from the saved value.)
+	// AllowSensitive follows the same order as every other setting:
+	// NGODINGMCP_ALLOW_SENSITIVE, then config.json, then false. A saved
+	// toggle therefore survives a restart of `serve` or a service restart.
 	AllowSensitive bool
 
 	AllowDownload    bool
@@ -94,7 +93,7 @@ func Resolve(saved Config) (Settings, error) {
 		RunAllow: os.Getenv("NGODINGMCP_RUN_ALLOWLIST"),
 		RunExact: os.Getenv("NGODINGMCP_RUN_ALLOWLIST_EXACT"),
 
-		AllowSensitive: boolean("NGODINGMCP_ALLOW_SENSITIVE", false),
+		AllowSensitive: boolean("NGODINGMCP_ALLOW_SENSITIVE", saved.AllowSensitive),
 
 		AllowDownload:    boolean("NGODINGMCP_ALLOW_DOWNLOAD", saved.AllowDownload),
 		DownloadHosts:    os.Getenv("NGODINGMCP_DOWNLOAD_ALLOW_HOSTS"),

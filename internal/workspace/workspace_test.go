@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -70,6 +71,53 @@ func TestSymlinkEscapeRejected(t *testing.T) {
 	}
 	if _, err := ws.ReadFile("link/secret.txt", 0, 0); !errors.Is(err, ErrOutsideRoot) {
 		t.Fatalf("read via symlink err = %v, want ErrOutsideRoot", err)
+	}
+}
+
+func TestWriteThroughSymlinkPreservesLink(t *testing.T) {
+	ws := newTestWorkspace(t)
+	mustWrite(t, ws, "target.txt", "old\n")
+	link := filepath.Join(ws.Root(), "link.txt")
+	if err := os.Symlink("target.txt", link); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	check := func(want string) {
+		t.Helper()
+		info, err := os.Lstat(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Fatal("symlink was replaced by a regular file")
+		}
+		if got := mustRead(t, ws, "target.txt"); got != want {
+			t.Fatalf("target = %q, want %q", got, want)
+		}
+		if got := mustRead(t, ws, "link.txt"); got != want {
+			t.Fatalf("via link = %q, want %q", got, want)
+		}
+	}
+
+	mustWrite(t, ws, "link.txt", "new\n")
+	check("new\n")
+	if _, _, err := ws.ReplaceText("link.txt", "new", "edited", false); err != nil {
+		t.Fatal(err)
+	}
+	check("edited\n")
+	if _, err := ws.WriteStream("link.txt", strings.NewReader("stream\n"), StreamOptions{MaxBytes: 100, Overwrite: true}); err != nil {
+		t.Fatal(err)
+	}
+	check("stream\n")
+
+	broken := filepath.Join(ws.Root(), "broken.txt")
+	if err := os.Symlink("missing.txt", broken); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if _, _, err := ws.WriteFile("broken.txt", "x"); err == nil {
+		t.Fatal("write through a broken symlink must be refused")
+	}
+	if info, err := os.Lstat(broken); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("broken symlink changed: info=%v err=%v", info, err)
 	}
 }
 
@@ -277,6 +325,77 @@ func TestRename(t *testing.T) {
 	}
 }
 
+func TestRenameRefusesOverwrite(t *testing.T) {
+	ws := newTestWorkspace(t)
+	mustWrite(t, ws, "a.txt", "a")
+	mustWrite(t, ws, "b.txt", "b")
+
+	if _, err := ws.Rename("a.txt", "b.txt"); !errors.Is(err, ErrRenameExists) {
+		t.Fatalf("overwrite file err = %v, want ErrRenameExists", err)
+	}
+	if got := mustRead(t, ws, "a.txt"); got != "a" {
+		t.Fatalf("source after refused move = %q", got)
+	}
+	if got := mustRead(t, ws, "b.txt"); got != "b" {
+		t.Fatalf("destination after refused move = %q", got)
+	}
+
+	if _, err := ws.Mkdir("dir"); err != nil {
+		t.Fatal(err)
+	}
+	mustWrite(t, ws, "dir/inside.txt", "inside")
+	if _, err := ws.Rename("a.txt", "dir"); !errors.Is(err, ErrRenameExists) {
+		t.Fatalf("overwrite dir err = %v, want ErrRenameExists", err)
+	}
+	if got := mustRead(t, ws, "dir/inside.txt"); got != "inside" {
+		t.Fatalf("directory content after refused move = %q", got)
+	}
+
+	if _, err := ws.Rename("missing.txt", "new/deep/dest.txt"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("missing source err = %v, want os.ErrNotExist", err)
+	}
+	if _, err := os.Stat(filepath.Join(ws.Root(), "new")); !os.IsNotExist(err) {
+		t.Fatalf("parent dir created for a failed move: %v", err)
+	}
+}
+
+func TestConcurrentEditsDoNotLoseUpdates(t *testing.T) {
+	ws := newTestWorkspace(t)
+	const n = 32
+	var b strings.Builder
+	for i := 0; i < n; i++ {
+		fmt.Fprintf(&b, "L%d\n", i)
+	}
+	mustWrite(t, ws, "f.txt", b.String())
+
+	start := make(chan struct{})
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			if _, _, err := ws.ReplaceText("f.txt", fmt.Sprintf("L%d\n", i), fmt.Sprintf("E%d\n", i), false); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatal(err)
+	}
+
+	got := mustRead(t, ws, "f.txt")
+	for i := 0; i < n; i++ {
+		if want := fmt.Sprintf("E%d\n", i); !strings.Contains(got, want) {
+			t.Fatalf("edit %d lost; file content:\n%s", i, got)
+		}
+	}
+}
+
 func TestReplaceLines(t *testing.T) {
 	ws := newTestWorkspace(t)
 	mustWrite(t, ws, "f.txt", "1\n2\n3\n4\n5\n")
@@ -399,6 +518,43 @@ func TestSearchReplace(t *testing.T) {
 	}
 	if got := mustRead(t, ws, "pkg/a.go"); !strings.Contains(got, "var qux = 1") || strings.Contains(got, "var foo") {
 		t.Fatalf("unexpected content after replace: %q", got)
+	}
+}
+
+func TestSearchReplaceRollsBackOnWriteFailure(t *testing.T) {
+	ws := newTestWorkspace(t)
+	mustWrite(t, ws, "a.txt", "target\n")
+	mustWrite(t, ws, "z.txt", "target\n")
+
+	// Sabotage the second target after the first write has landed: the
+	// stale check has already passed, so this fails during the apply loop.
+	var sabotaged bool
+	var sabotageErr error
+	ws.hub.testAfterNotify = func() {
+		if sabotaged {
+			return
+		}
+		sabotaged = true
+		p := filepath.Join(ws.Root(), "z.txt")
+		if sabotageErr = os.Remove(p); sabotageErr != nil {
+			return
+		}
+		sabotageErr = os.Mkdir(p, 0o755)
+	}
+	defer func() { ws.hub.testAfterNotify = nil }()
+
+	_, err := ws.SearchReplace(".", "target", "replaced", "*.txt", false, 50)
+	if err == nil {
+		t.Fatal("want failure on second file, got success")
+	}
+	if !sabotaged {
+		t.Fatal("test hook never fired")
+	}
+	if sabotageErr != nil {
+		t.Fatalf("sabotage failed: %v", sabotageErr)
+	}
+	if got := mustRead(t, ws, "a.txt"); got != "target\n" {
+		t.Fatalf("a.txt = %q, want original after rollback", got)
 	}
 }
 
@@ -837,6 +993,16 @@ func TestSensitiveSymlinkTargetRejected(t *testing.T) {
 	}
 	if _, err := ws.ReadFile("notes/id_rsa", 0, 0); !errors.Is(err, ErrSensitive) {
 		t.Fatalf("read via dir symlink err = %v, want ErrSensitive", err)
+	}
+
+	// A path that does not exist yet, but lives inside a symlinked sensitive
+	// directory, must be refused too: the symlink is the deepest existing
+	// ancestor of the requested path.
+	if _, _, err := ws.WriteFile("notes/newkey", "x"); !errors.Is(err, ErrSensitive) {
+		t.Fatalf("write inside dir symlink err = %v, want ErrSensitive", err)
+	}
+	if _, err := ws.Mkdir("notes/sub"); !errors.Is(err, ErrSensitive) {
+		t.Fatalf("mkdir inside dir symlink err = %v, want ErrSensitive", err)
 	}
 
 	// With the guard explicitly off, the same path is allowed.

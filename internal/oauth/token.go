@@ -93,21 +93,7 @@ func (s *Server) issueTokenPairFor(issuer, clientID, scope, grant, resource stri
 	}
 	now := time.Now()
 	s.mu.Lock()
-	s.sweepExpiredLocked(now)
-	s.refresh[string(hashSecret(rawRefresh))] = &refreshToken{
-		clientID:  clientID,
-		scope:     scope,
-		grant:     grant,
-		expiresAt: now.Add(refreshTokenTTL),
-	}
-	// Mark the client as used so eviction keeps it.
-	if c, ok := s.clients[clientID]; ok {
-		c.LastUsedAt = now.Unix()
-		s.clients[clientID] = c
-	}
-	// Save the new refresh token (and LastUsedAt). Best effort: a failed
-	// persist must not fail the token issue.
-	s.saveTokensLocked("issue")
+	s.storeRefreshTokenLocked(clientID, scope, grant, rawRefresh, now)
 	s.mu.Unlock()
 
 	return &tokenResponse{
@@ -117,6 +103,24 @@ func (s *Server) issueTokenPairFor(issuer, clientID, scope, grant, resource stri
 		Scope:        scope,
 		RefreshToken: rawRefresh,
 	}, nil
+}
+
+// storeRefreshTokenLocked records a newly issued refresh token and marks the
+// client used. Caller must hold s.mu. Keeping the whole rotate under one lock
+// stops a replay from being detected before its successor is stored.
+func (s *Server) storeRefreshTokenLocked(clientID, scope, grant, rawRefresh string, now time.Time) {
+	s.sweepExpiredLocked(now)
+	s.refresh[string(hashSecret(rawRefresh))] = &refreshToken{
+		clientID:  clientID,
+		scope:     scope,
+		grant:     grant,
+		expiresAt: now.Add(refreshTokenTTL),
+	}
+	if c, ok := s.clients[clientID]; ok {
+		c.LastUsedAt = now.Unix()
+		s.clients[clientID] = c
+	}
+	s.saveTokensLocked("issue")
 }
 
 func (s *Server) handleAuthorizationCodeGrant(w http.ResponseWriter, r *http.Request, form url.Values) {
@@ -213,24 +217,17 @@ func (s *Server) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request,
 	}
 
 	key := string(hashSecret(rawRefresh))
+	now := time.Now()
+
+	// One critical section for the whole rotation: consume, detect replay,
+	// and store the successor. Otherwise a replay arriving in the gap can
+	// revoke the family before the successor exists and miss it.
 	s.mu.Lock()
 	rt, ok := s.refresh[key]
-	if ok {
-		// Rotate: the presented token is consumed whether it is valid or not,
-		// so a reused token is evidence of theft, not just an error.
-		delete(s.refresh, key)
-		s.consumed[key] = consumedGrant{grant: rt.grant, exp: rt.expiresAt}
-		// Save right away, so the old token stays consumed even if the
-		// steps below fail or the process stops before the new one is saved.
-		s.saveTokensLocked("rotate")
-	}
-	s.mu.Unlock()
-
 	if !ok {
 		// A refresh token that was already used is evidence of theft
 		// (RFC 6819 §5.2.2.3): revoke its whole family, so the attacker's
 		// successor tokens die too.
-		s.mu.Lock()
 		if cg, seen := s.consumed[key]; seen {
 			for k, t := range s.refresh {
 				if t.grant == cg.grant {
@@ -245,26 +242,50 @@ func (s *Server) handleRefreshTokenGrant(w http.ResponseWriter, r *http.Request,
 			"refresh token is invalid or was already used")
 		return
 	}
-	if time.Now().After(rt.expiresAt) {
+
+	// Consume whether valid or not; a reused token is evidence of theft.
+	delete(s.refresh, key)
+	// Keep the marker for as long as the successor can be used. The
+	// presented token may expire much earlier than the token about to be
+	// issued, and a sweep must not forget the replay before then.
+	s.consumed[key] = consumedGrant{grant: rt.grant, exp: now.Add(refreshTokenTTL)}
+	s.saveTokensLocked("rotate")
+
+	if now.After(rt.expiresAt) {
+		s.mu.Unlock()
 		writeTokenError(w, http.StatusBadRequest, "invalid_grant", "refresh token expired")
 		return
 	}
 	if rt.clientID != clientID {
+		s.mu.Unlock()
 		writeTokenError(w, http.StatusBadRequest, "invalid_grant",
 			"refresh token was not issued to this client")
 		return
 	}
-
-	resp, err := s.issueTokenPairFor(issuer, clientID, rt.scope, rt.grant, resource)
+	access, err := issueAccessToken(s.key, s.kid, issuer, rt.scope, resource)
 	if err != nil {
+		s.mu.Unlock()
 		writeTokenError(w, http.StatusInternalServerError, "server_error", "could not issue token")
 		return
 	}
+	nextRefresh, err := randomSecret()
+	if err != nil {
+		s.mu.Unlock()
+		writeTokenError(w, http.StatusInternalServerError, "server_error", "could not issue token")
+		return
+	}
+	scope := rt.scope
+	s.storeRefreshTokenLocked(clientID, scope, rt.grant, nextRefresh, now)
+	s.mu.Unlock()
+
+	if s.testRotateGap != nil {
+		s.testRotateGap()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token":  resp.AccessToken,
-		"token_type":    resp.TokenType,
-		"expires_in":    resp.ExpiresIn,
-		"scope":         resp.Scope,
-		"refresh_token": resp.RefreshToken,
+		"access_token":  access,
+		"token_type":    "Bearer",
+		"expires_in":    int64(accessTokenTTL / time.Second),
+		"scope":         scope,
+		"refresh_token": nextRefresh,
 	})
 }

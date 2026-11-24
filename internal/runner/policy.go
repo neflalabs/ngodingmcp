@@ -14,15 +14,24 @@ var (
 		"go vet",
 		"gofmt -l",
 		"staticcheck",
+		"node",
 		"git status",
 		"git diff",
 		"git log",
 	}
 	DefaultExact = []string{
+		"bun init -y",
+		"bun install",
 		"bun install --frozen-lockfile",
 		"bun test",
 		"bun run build",
 		"bun run dev",
+		"npm init -y",
+		"npm install",
+		"npm ci",
+		"npm test",
+		"npm run build",
+		"npm run dev",
 		RestartCommand,
 	}
 )

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -855,6 +856,76 @@ func TestRefreshTokenReplayRevokesFamily(t *testing.T) {
 	_, codeR2 := exchangeRefreshToken(t, s, clientID, r2)
 	if codeR2 != http.StatusBadRequest {
 		t.Fatalf("successor after replay detection: status %d, want 400 (family revoked)", codeR2)
+	}
+}
+
+// replayWriter signals when the token endpoint has answered with an error.
+type replayWriter struct {
+	*httptest.ResponseRecorder
+	done chan struct{}
+	once sync.Once
+}
+
+func (w *replayWriter) WriteHeader(code int) {
+	w.ResponseRecorder.WriteHeader(code)
+	if code >= http.StatusBadRequest {
+		w.once.Do(func() { close(w.done) })
+	}
+}
+
+func TestConcurrentRefreshReplayRevokesFamily(t *testing.T) {
+	s := newTestServer(t)
+	clientID, r1 := issueRefreshToken(t, s)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var once sync.Once
+	s.testRotateGap = func() {
+		once.Do(func() {
+			close(entered)
+			<-release
+		})
+	}
+
+	type result struct {
+		code int
+		m    map[string]any
+	}
+	rotated := make(chan result, 1)
+	go func() {
+		m, code := exchangeRefreshToken(t, s, clientID, r1)
+		rotated <- result{code: code, m: m}
+	}()
+	<-entered // the old token is consumed; its successor is not stored yet
+
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("client_id", clientID)
+	form.Set("refresh_token", r1)
+	form.Set("resource", "http://127.0.0.1:8080")
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8080/oauth/token", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rec := &replayWriter{ResponseRecorder: httptest.NewRecorder(), done: make(chan struct{})}
+	s.handleToken(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("replay: status %d, want 400", rec.Code)
+	}
+	<-rec.done
+
+	close(release)
+	res := <-rotated
+	if res.code != http.StatusOK {
+		t.Fatalf("rotation: status %d: %v", res.code, res.m)
+	}
+	next, _ := res.m["refresh_token"].(string)
+	if next == "" {
+		t.Fatalf("rotation returned no refresh token: %v", res.m)
+	}
+	if hasLiveToken(s, r1) {
+		t.Error("presented token still live after rotation")
+	}
+	if hasLiveToken(s, next) {
+		t.Error("successor still live after replay detected between consume and issue")
 	}
 }
 

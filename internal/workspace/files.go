@@ -222,7 +222,9 @@ func (w *Workspace) Mkdir(rel string) (string, error) {
 	return relp, nil
 }
 
-// Rename moves from to to inside the workspace.
+// Rename moves from to to inside the workspace. An existing destination is
+// never overwritten, and the destination parent is created only after the
+// source is known to exist.
 func (w *Workspace) Rename(from, to string) (string, error) {
 	src, err := w.resolve(from)
 	if err != nil {
@@ -232,7 +234,18 @@ func (w *Workspace) Rename(from, to string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if _, err := os.Lstat(src); err != nil {
+		return "", err
+	}
 	fromRel := w.relPath(src)
+	if _, err := os.Lstat(dst); err == nil {
+		return "", ErrRenameExists
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	// ponytail: check-then-rename is not atomic. A concurrent creator can
+	// still slip between Lstat and Rename; RENAME_NOREPLACE would close that
+	// race but needs x/sys (a new dependency).
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return "", err
 	}

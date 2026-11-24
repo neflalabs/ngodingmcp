@@ -5,7 +5,6 @@
 package gitread
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -19,8 +18,8 @@ import (
 	"ngodingmcp/internal/workspace"
 )
 
-// MaxOutputBytes caps the output returned by one git command.
-const MaxOutputBytes = 256 << 10
+// MaxOutputBytes caps the output captured from one git command.
+const MaxOutputBytes = gitutil.MaxOutputBytes
 
 // DefaultTimeout bounds one git command.
 const DefaultTimeout = 20 * time.Second
@@ -182,9 +181,11 @@ func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 	cmd.Dir = g.ws.Root()
 	cmd.Env = append(gitutil.SanitizeEnv(os.Environ()), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=cat", "LC_ALL=C")
 	cmd.WaitDelay = 5 * time.Second
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Cap while reading; trimming after cmd.Run would still buffer everything.
+	stdout := gitutil.NewCappedBuffer(MaxOutputBytes)
+	stderr := gitutil.NewCappedBuffer(MaxOutputBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
@@ -200,11 +201,5 @@ func (g *Git) run(ctx context.Context, args, paths []string) (Result, error) {
 		return Result{}, g.ws.SafeError(fmt.Errorf("git %s: %s", args[0], msg))
 	}
 
-	out := stdout.String()
-	res := Result{Output: out}
-	if len(out) > MaxOutputBytes {
-		res.Output = out[:MaxOutputBytes]
-		res.Truncated = true
-	}
-	return res, nil
+	return Result{Output: stdout.String(), Truncated: stdout.Truncated()}, nil
 }

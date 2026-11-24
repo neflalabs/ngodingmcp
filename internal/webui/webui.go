@@ -318,7 +318,7 @@ func errStatus(err error) int {
 		status = http.StatusUnsupportedMediaType
 	case errors.Is(err, workspace.ErrOutsideRoot), errors.Is(err, workspace.ErrSensitive):
 		status = http.StatusForbidden
-	case errors.Is(err, workspace.ErrExists):
+	case errors.Is(err, workspace.ErrExists), errors.Is(err, workspace.ErrRenameExists):
 		status = http.StatusConflict
 	case errors.Is(err, workspace.ErrStreamTooLarge):
 		status = http.StatusRequestEntityTooLarge

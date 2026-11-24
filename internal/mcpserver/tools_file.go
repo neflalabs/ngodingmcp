@@ -256,7 +256,7 @@ type movePathOut struct {
 func addMovePath(s *mcp.Server, ws *workspace.Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "move_path",
-		Description: "Move or rename a file or directory.",
+		Description: "Move or rename a file or directory; refuses to overwrite an existing destination.",
 		Annotations: destructive(),
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in movePathArgs) (*mcp.CallToolResult, movePathOut, error) {
 		p, err := ws.Rename(in.From, in.To)

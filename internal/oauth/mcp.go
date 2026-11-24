@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-// MCP protects the MCP endpoint. Static credentials (Bearer / X-API-Key /
-// cookie) are accepted exactly as before; otherwise a verifiable ES256 access
-// JWT issued by this server is required. Requests without either receive a 401
-// with an RFC 9728 resource_metadata challenge so MCP clients can discover and
-// use OAuth.
+// MCP protects the MCP endpoint. Static machine credentials (Bearer /
+// X-API-Key) are accepted exactly as before; otherwise a verifiable ES256
+// access JWT issued by this server is required. The UI session cookie is not
+// accepted. Requests without either receive a 401 with an RFC 9728
+// resource_metadata challenge so MCP clients can discover and use OAuth.
 func (s *Server) MCP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch s.acceptMCP(r) {

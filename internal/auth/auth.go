@@ -81,11 +81,23 @@ func (a *Authenticator) equal(got string) bool {
 	return subtle.ConstantTimeCompare(gh[:], th[:]) == 1
 }
 
-// API protects machine endpoints (MCP and REST). Unauthorized requests get a
-// JSON 401 with a Bearer challenge.
+// API protects browser REST endpoints. Static header credentials and a valid
+// UI session cookie are accepted. Unauthorized requests get a JSON 401 with a
+// Bearer challenge.
 func (a *Authenticator) API(next http.Handler) http.Handler {
+	return a.guard(next, a.Check)
+}
+
+// Machine protects machine endpoints such as /mcp. Only static header
+// credentials are accepted; the UI session cookie is deliberately rejected,
+// so a leaked browser cookie cannot be replayed as an MCP credential.
+func (a *Authenticator) Machine(next http.Handler) http.Handler {
+	return a.guard(next, a.CheckHeader)
+}
+
+func (a *Authenticator) guard(next http.Handler, check func(*http.Request) bool) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.Check(r) {
+		if check(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

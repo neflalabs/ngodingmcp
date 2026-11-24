@@ -28,6 +28,8 @@ type EditResult struct {
 // ambiguous), nothing is written and the error names the failing edit. With
 // dryRun the file is left untouched and only the diff is returned.
 func (w *Workspace) EditFile(rel string, edits []Edit, dryRun bool) (EditResult, error) {
+	w.writeMu.Lock()
+	defer w.writeMu.Unlock()
 	if len(edits) == 0 {
 		return EditResult{}, errors.New("edits must not be empty")
 	}
@@ -67,7 +69,7 @@ func (w *Workspace) EditFile(rel string, edits []Edit, dryRun bool) (EditResult,
 		TotalLines:   countLines(updated),
 	}
 	if !dryRun && updated != content {
-		if _, _, err := w.WriteFile(relp, updated); err != nil {
+		if _, _, err := w.writeFileLocked(relp, updated); err != nil {
 			return EditResult{}, err
 		}
 	}

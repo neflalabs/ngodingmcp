@@ -222,7 +222,7 @@
         <div class="upload-hint">Off: /mcp only accepts the static token.</div>
       </div>
 
-      <p class="upload-hint restart-note">Changes are saved to <code>config.json</code> (shared with the TUI). Everything except the sensitive-file toggle is applied after the server restarts; flags/env override the file at start.</p>
+      <p class="upload-hint restart-note">Changes are saved to <code>config.json</code> (shared with the TUI). The sensitive-file toggle applies immediately; all settings, including it, are restored on restart. Flags/env override the file at start.</p>
       <div class="modal-actions">
         <button type="button" class="ghost" id="btnCancelSettings">Cancel</button>
         <button type="button" id="btnSaveSettings" class="primary">Save</button>

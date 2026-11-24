@@ -153,6 +153,45 @@ func TestRefreshReplayAfterRestartRevokesFamily(t *testing.T) {
 	}
 }
 
+func TestLateReplayAfterConsumedExpiryStillRevokesFamily(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "oauth.json")
+	s := mustNew(t, p)
+	clientID, r1 := issueRefreshToken(t, s)
+
+	// Emulate a token rotated near its expiry: its successor lives much
+	// longer than the presented token did.
+	key := hashSecret(r1)
+	s.mu.Lock()
+	s.refresh[string(key)].expiresAt = time.Now().Add(time.Hour)
+	s.mu.Unlock()
+
+	m, code := exchangeRefreshToken(t, s, clientID, r1)
+	if code != http.StatusOK {
+		t.Fatalf("rotation: status %d: %v", code, m)
+	}
+	r2, _ := m["refresh_token"].(string)
+	if r2 == "" || !hasLiveToken(s, r2) {
+		t.Fatalf("successor not live after rotation: %v", m)
+	}
+
+	// A sweep after the presented token expired must not forget r1 while
+	// its successor is still usable.
+	s.mu.Lock()
+	s.sweepExpiredLocked(time.Now().Add(2 * time.Hour))
+	_, stillConsumed := s.consumed[string(key)]
+	s.mu.Unlock()
+	if !stillConsumed {
+		t.Fatal("consumed marker expired before its successor")
+	}
+
+	if _, code := exchangeRefreshToken(t, s, clientID, r1); code != http.StatusBadRequest {
+		t.Fatalf("late replay: status %d, want 400", code)
+	}
+	if hasLiveToken(s, r2) {
+		t.Error("successor still live after late replay")
+	}
+}
+
 // hasLiveToken reports whether raw is currently an exchangeable refresh token
 // in s, without consuming it.
 func hasLiveToken(s *Server, raw string) bool {

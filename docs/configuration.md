@@ -85,9 +85,12 @@ Lokasi: `~/.config/ngodingmcp/config.json`.
   `publicUrl`, `trustedProxies`, `oauth`.
 - Validasi server menolak `addr` tidak valid (`host:port`, port 1–65535) dan token
   yang memuat karakter berbahaya (`;`, `,`, `"`, `\`) atau karakter kontrol, atau
-  lebih pendek dari 32 karakter (token kustom; kosong tetap berarti generate acak).
-  Perubahan tersimpan ke `config.json` dan berlaku setelah restart — kecuali
-  `allowSensitive` yang langsung berlaku; environment dan flag tetap menimpa file saat start. Pola non-interaktif tetap
+  lebih pendek dari 32 karakter (token kustom baru; kosong tetap berarti generate
+  acak). Token lama yang sudah tersimpan tetap diterima kalau tidak diubah, supaya
+  setting lain bisa disimpan; sebaiknya segera diganti dengan token ≥32 karakter.
+  Perubahan tersimpan ke `config.json` dan berlaku setelah restart; `allowSensitive`
+  juga langsung berlaku di sesi berjalan. Environment dan flag tetap menimpa file
+  saat start untuk semua setting, termasuk `allowSensitive`. Pola non-interaktif tetap
   tersedia: `ngodingmcp serve --public-url ... --trusted-proxy ... --oauth=false`,
   atau file env service.
 - Field `disableTools`: array nama modul tool inti yang tidak didaftarkan

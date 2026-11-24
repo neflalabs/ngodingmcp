@@ -111,9 +111,14 @@ func (u *UI) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Token != nil {
 		v := strings.TrimSpace(*in.Token)
-		if err := validateToken(v); err != nil {
-			writeErr(w, err)
-			return
+		// The Web UI sends every field, including an unchanged token from an
+		// older config. Grandfather that value so unrelated settings can be
+		// saved; only a newly entered token must meet the length rule.
+		if v != config.Load().Token {
+			if err := validateToken(v); err != nil {
+				writeErr(w, err)
+				return
+			}
 		}
 		in.Token = &v
 	}
@@ -210,7 +215,8 @@ func (e errStr) Error() string { return string(e) }
 // validateToken allows an empty token (meaning: generate one on start) and
 // everything a cookie can carry: printable ASCII except the characters that
 // break the Cookie header's own syntax. A non-empty custom token must be at
-// least 32 characters so it is not trivially guessable.
+// least 32 characters so it is not trivially guessable. A saved legacy token
+// is exempt while unchanged (see handlePutSettings).
 func validateToken(token string) error {
 	if len(token) > 512 {
 		return errStr("token must be at most 512 characters")

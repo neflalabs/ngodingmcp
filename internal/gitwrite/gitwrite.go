@@ -14,7 +14,6 @@
 package gitwrite
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -425,29 +424,42 @@ func (g *Git) run(ctx context.Context, o runOpts, args ...string) (string, strin
 	if cmd.WaitDelay == 0 {
 		cmd.WaitDelay = 5 * time.Second
 	}
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
+	// Cap while reading: a bytes.Buffer would hold the whole git output in
+	// memory before the caller ever sees the size.
+	stdout := gitutil.NewCappedBuffer(gitutil.MaxOutputBytes)
+	stderr := gitutil.NewCappedBuffer(gitutil.MaxOutputBytes)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	if err := cmd.Run(); err != nil {
 		name := firstCommand(args)
 		if ctx.Err() == context.DeadlineExceeded {
 			return "", "", fmt.Errorf("git %s timed out after %s: %w", name, timeout, context.DeadlineExceeded)
 		}
-		msg := strings.TrimSpace(stderr.String())
+		msg := strings.TrimSpace(captured(stderr))
 		if msg == "" {
 			msg = err.Error()
 		}
 		// stdout is kept on failure because git push --porcelain reports
 		// rejected refs there.
-		out := g.ws.ScrubPaths(ScrubCredentials(stdout.String()))
+		out := g.ws.ScrubPaths(ScrubCredentials(captured(stdout)))
 		return out, "", g.ws.SafeError(&scrubbedError{msg: ScrubCredentials(fmt.Sprintf("git %s: %s", name, msg)), err: err})
 	}
 	if !o.network {
-		return stdout.String(), stderr.String(), nil
+		return captured(stdout), captured(stderr), nil
 	}
-	out := g.ws.ScrubPaths(ScrubCredentials(stdout.String()))
-	errOut := g.ws.ScrubPaths(ScrubCredentials(stderr.String()))
+	out := g.ws.ScrubPaths(ScrubCredentials(captured(stdout)))
+	errOut := g.ws.ScrubPaths(ScrubCredentials(captured(stderr)))
 	return out, errOut, nil
+}
+
+// captured renders a capped stream, marking output that hit the limit so a
+// caller cannot mistake it for a complete transcript.
+func captured(b *gitutil.CappedBuffer) string {
+	out := b.String()
+	if b.Truncated() {
+		out += "\n[git output truncated]"
+	}
+	return out
 }
 
 // scrubbedError carries a credential-free message and keeps the original

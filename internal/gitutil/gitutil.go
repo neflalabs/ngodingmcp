@@ -9,7 +9,55 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 )
+
+// MaxOutputBytes caps what one git command may contribute to a tool reply.
+const MaxOutputBytes = 256 << 10
+
+// CappedBuffer is an io.Writer that keeps at most limit bytes. Output past the
+// limit is discarded, but Write still reports the full length so exec does not
+// fail on a short write.
+type CappedBuffer struct {
+	mu        sync.Mutex
+	buf       strings.Builder
+	limit     int
+	truncated bool
+}
+
+// NewCappedBuffer returns a CappedBuffer with the given byte limit.
+func NewCappedBuffer(limit int) *CappedBuffer { return &CappedBuffer{limit: limit} }
+
+func (b *CappedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	remaining := b.limit - b.buf.Len()
+	if remaining > 0 {
+		if len(p) <= remaining {
+			b.buf.Write(p)
+		} else {
+			b.buf.Write(p[:remaining])
+			b.truncated = true
+		}
+	} else if len(p) > 0 {
+		b.truncated = true
+	}
+	return len(p), nil
+}
+
+// String returns the bytes kept so far.
+func (b *CappedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// Truncated reports whether output was discarded.
+func (b *CappedBuffer) Truncated() bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.truncated
+}
 
 // UntrustedLocalKeys matches .git/config keys that could run a program,
 // redirect a remote or pull in another config file. The user's global and
@@ -25,6 +73,14 @@ var UntrustedLocalKeys = []*regexp.Regexp{
 	regexp.MustCompile(`^merge\..+\.driver$`),
 	regexp.MustCompile(`^include\.`),
 	regexp.MustCompile(`^includeif\.`),
+	// Network steering: a repo can point fetch/push at a proxy that reads
+	// credentials, disable TLS verification, or inject headers. URL-scoped
+	// variants (`http.<url>.*`) are covered by the optional subsection.
+	regexp.MustCompile(`^http\.(.+\.)?(proxy|extraheader|sslverify|sslcainfo|sslcapath)$`),
+	regexp.MustCompile(`^remote\..+\.proxy$`),
+	// --local reads .git/config only; this extension adds config.worktree,
+	// which applies to every command but is never scanned by the guard.
+	regexp.MustCompile(`^extensions\.worktreeconfig$`),
 }
 
 // CheckLocalConfig refuses to run when the repository's own config sets a

@@ -104,12 +104,10 @@ func TestResolveEnvBeatsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Root != "/cfg/root" || s.Addr != "127.0.0.1:1" || s.Token != "cfg" || !s.AllowRun || !s.AllowDownload ||
-		s.OAuth || s.PublicURL != "https://cfg.example" || s.TrustedProxies != "private" || s.DisableTools != "inspect,git_remote" {
+	if s.Root != "/cfg/root" || s.Addr != "127.0.0.1:1" || s.Token != "cfg" || !s.AllowRun || !s.AllowSensitive ||
+		!s.AllowDownload || s.OAuth || s.PublicURL != "https://cfg.example" || s.TrustedProxies != "private" ||
+		s.DisableTools != "inspect,git_remote" {
 		t.Errorf("config not applied: %+v", s)
-	}
-	if s.AllowSensitive {
-		t.Error("AllowSensitive must not come from config.json")
 	}
 
 	// The environment wins over config.json.
@@ -117,6 +115,7 @@ func TestResolveEnvBeatsConfig(t *testing.T) {
 	t.Setenv("NGODINGMCP_ADDR", "127.0.0.1:2")
 	t.Setenv("NGODINGMCP_TOKEN", "env")
 	t.Setenv("NGODINGMCP_ALLOW_RUN", "false")
+	t.Setenv("NGODINGMCP_ALLOW_SENSITIVE", "false")
 	t.Setenv("NGODINGMCP_ALLOW_DOWNLOAD", "0")
 	t.Setenv("NGODINGMCP_OAUTH", "true")
 	t.Setenv("NGODINGMCP_PUBLIC_URL", "https://env.example")
@@ -127,7 +126,7 @@ func TestResolveEnvBeatsConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Root != "/env/root" || s.Addr != "127.0.0.1:2" || s.Token != "env" || s.AllowRun || s.AllowDownload ||
+	if s.Root != "/env/root" || s.Addr != "127.0.0.1:2" || s.Token != "env" || s.AllowRun || s.AllowSensitive || s.AllowDownload ||
 		!s.OAuth || s.PublicURL != "https://env.example" || s.TrustedProxies != "none" || s.RunTimeout != 5*time.Minute ||
 		s.DisableTools != "git_write" {
 		t.Errorf("env did not win: %+v", s)

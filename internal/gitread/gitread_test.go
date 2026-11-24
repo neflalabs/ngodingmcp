@@ -69,6 +69,30 @@ func commitAll(t *testing.T, root, msg string) {
 	gitOut(t, root, "commit", "-qm", msg)
 }
 
+func TestLogCapsHugeBody(t *testing.T) {
+	g, root := newGit(t)
+	gitOut(t, root, "init", "-q")
+	write(t, root, "f.txt", "data")
+	gitOut(t, root, "add", "f.txt")
+	commit := exec.Command("git", "commit", "-q", "-F", "-")
+	commit.Dir = root
+	commit.Stdin = strings.NewReader("subject\n\n" + strings.Repeat("y", 300<<10))
+	if out, err := commit.CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v: %.200s", err, out)
+	}
+
+	res, err := g.Log(context.Background(), LogOptions{Limit: 1, Body: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Truncated {
+		t.Fatal("huge log body not marked truncated")
+	}
+	if len(res.Output) != MaxOutputBytes {
+		t.Fatalf("output = %d bytes, want %d", len(res.Output), MaxOutputBytes)
+	}
+}
+
 func TestStatusExcludesSensitiveFiles(t *testing.T) {
 	g, root := newGit(t)
 	write(t, root, "main.go", "package main\n")

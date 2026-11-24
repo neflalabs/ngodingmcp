@@ -49,6 +49,12 @@ func (w *Workspace) walkFiltered(base string, pred func(relp string) bool) ([]st
 // binary files without a second stat. ok=false means skip: the file is
 // unreadable, larger than MaxRead, or binary.
 func (w *Workspace) readForBulk(path string) ([]byte, fs.FileInfo, bool) {
+	// Walkers see paths directly and never call resolve. Stat first so a
+	// FIFO cannot block the open while search or stats scans the tree.
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, nil, false
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, nil, false

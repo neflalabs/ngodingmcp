@@ -38,9 +38,14 @@ func (p *Process) wait() {
 	p.endedAt = time.Now()
 	if err != nil {
 		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		switch {
+		case errors.Is(err, exec.ErrWaitDelay):
+			// A daemonized descendant held the log pipes open. The direct
+			// child did exit, so keep its real status, not a fake error.
+			p.exitCode = p.cmd.ProcessState.ExitCode()
+		case errors.As(err, &exitErr):
 			p.exitCode = exitErr.ExitCode()
-		} else {
+		default:
 			p.exitCode = -1
 			p.errMsg = err.Error()
 		}

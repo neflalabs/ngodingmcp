@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,9 @@ const DefaultTimeout = 60 * time.Second
 var (
 	ErrEmptyCommand = errors.New("empty command")
 	ErrNotAllowed   = errors.New("command is not in the allowlist")
+	// ErrCallerDeadline distinguishes a deadline from the caller from the
+	// runner's own timeout, which is reported as Result.TimedOut instead.
+	ErrCallerDeadline = errors.New("caller deadline exceeded")
 )
 
 // blockedFlags are arguments that turn an allowlisted command into a way to
@@ -213,16 +217,20 @@ func (r *Runner) Run(ctx context.Context, argv []string) (Result, error) {
 		Truncated:  out.Truncated(),
 		DurationMS: time.Since(start).Milliseconds(),
 	}
+	// Check the caller first: runCtx inherits the caller's deadline, so its
+	// DeadlineExceeded alone cannot tell whose deadline fired. A caller
+	// deadline or cancel is an error; our own timeout stays a TimedOut result.
+	if err := ctx.Err(); err != nil {
+		res.ExitCode = -1
+		if errors.Is(err, context.DeadlineExceeded) {
+			return res, fmt.Errorf("%w: %w", ErrCallerDeadline, err)
+		}
+		return res, err
+	}
 	if runCtx.Err() == context.DeadlineExceeded {
 		res.TimedOut = true
 		res.ExitCode = -1
 		return res, nil
-	}
-	if err := ctx.Err(); err != nil {
-		// The caller's context was canceled, not our timeout: report it
-		// as an error instead of a silent -1 exit.
-		res.ExitCode = -1
-		return res, err
 	}
 	if runErr == nil {
 		return res, nil
@@ -274,6 +282,9 @@ func (r *Runner) Check(argv []string) error {
 	if err := checkBlockedFlags(argv); err != nil {
 		return err
 	}
+	if err := r.checkOutsidePaths(argv); err != nil {
+		return err
+	}
 	if !r.allowed(argv) {
 		return fmt.Errorf("%w: %s", ErrNotAllowed, FormatArgv(argv))
 	}
@@ -292,6 +303,64 @@ func checkBlockedFlags(argv []string) error {
 		}
 	}
 	return nil
+}
+
+// checkOutsidePaths rejects arguments that name files outside the workspace
+// root. The allowlist bounds which program may run, not which files it can
+// reach: `go build -o /tmp/x` writes outside the root, and a symlinked path
+// can hide the same escape behind a relative name.
+// ponytail: path checks are not an OS sandbox; add Landlock/bubblewrap when
+// untrusted workspaces need real filesystem isolation (a new dependency).
+func (r *Runner) checkOutsidePaths(argv []string) error {
+	root, err := filepath.EvalSymlinks(r.Root())
+	if err != nil {
+		return fmt.Errorf("resolve workspace root: %w", err)
+	}
+	for _, tok := range argv[1:] {
+		p := strings.ReplaceAll(tok, "\\", "/")
+		if filepath.IsAbs(tok) || strings.HasPrefix(p, "/") {
+			return fmt.Errorf("%w: argument %q is an absolute path", ErrNotAllowed, tok)
+		}
+		for _, seg := range strings.Split(p, "/") {
+			if seg == ".." {
+				return fmt.Errorf("%w: argument %q escapes the workspace root", ErrNotAllowed, tok)
+			}
+		}
+		value := strings.TrimLeft(tok, "-")
+		if i := strings.IndexByte(value, '='); i >= 0 {
+			value = value[i+1:]
+		}
+		if value == "" {
+			continue
+		}
+		full := filepath.Join(root, filepath.FromSlash(value))
+		for {
+			if _, err := os.Lstat(full); err == nil {
+				resolved, err := filepath.EvalSymlinks(full)
+				if err != nil {
+					return fmt.Errorf("resolve %q: %w", tok, err)
+				}
+				if pathOutside(root, resolved) {
+					return fmt.Errorf("%w: argument %q points outside the workspace root", ErrNotAllowed, tok)
+				}
+				break
+			}
+			parent := filepath.Dir(full)
+			if parent == full {
+				break
+			}
+			full = parent
+		}
+	}
+	return nil
+}
+
+func pathOutside(root, target string) bool {
+	rel, err := filepath.Rel(root, target)
+	if err != nil {
+		return true
+	}
+	return rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 func (r *Runner) allowed(argv []string) bool {

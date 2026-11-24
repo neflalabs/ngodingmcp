@@ -97,6 +97,7 @@ discovery dan flow OAuth (`/.well-known/...`, `/oauth/...`) terbuka.
 | Endpoint | Fungsi |
 |---|---|
 | `GET /api/info` | info server, termasuk `version` dan `built` |
+| `GET /api/events` | SSE: frame `hello` berisi `seq` revisions saat koneksi, lalu event perubahan workspace (`seq`, `op`, `path`, `from`) secara berurutan; heartbeat `: ping` tiap 25 detik |
 | `GET /api/tree` | file tree (`?recursive=1`: maks 2000 entri, direktori berat diskip, respons `truncated: true` bila terpotong) |
 | `GET /api/file`, `PUT /api/file`, `DELETE /api/file` | baca, simpan, hapus file |
 | `POST /api/mkdir`, `POST /api/rename` | buat folder, rename/pindah |
@@ -115,6 +116,11 @@ discovery dan flow OAuth (`/.well-known/...`, `/oauth/...`) terbuka.
 | `POST /api/processes/stop-all` | stop semua proses |
 
 Endpoint `/api/processes...` hanya ada kalau `--allow-run` aktif.
+
+Event SSE diberi nomor saat mutasi workspace terjadi dan dimasukkan ke antrean dalam
+urutan yang sama, jadi klien tidak pernah melihat `seq` mundur. Browser menjaga
+`lastSeq` tetap monotonik kalau frame lama dari antrean sempat tiba setelah
+`hello`. Ini hanya sinkronisasi Web UI; `/mcp` tetap stateless request/response.
 
 `activate` menerima body opsional `{"stopProcesses": true}`. Tanpa itu, proses
 yang masih jalan membuat switch dibalas `409` dengan `runningProcesses`.
