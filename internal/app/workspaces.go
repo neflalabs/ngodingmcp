@@ -28,11 +28,27 @@ const (
 	processGrace = 5 * time.Second
 )
 
+// configStore is the slice of config the workspace manager needs. Keeping it
+// behind a field avoids direct calls to the config singleton in this file.
+type configStore interface {
+	Load() config.Config
+	Update(fn func(*config.Config)) error
+}
+
+// packageConfigStore delegates to the config package used by the CLI and TUI.
+type packageConfigStore struct{}
+
+func (packageConfigStore) Load() config.Config { return config.Load() }
+func (packageConfigStore) Update(fn func(*config.Config)) error {
+	return config.Update(fn)
+}
+
 // workspaceManager implements webui.Workspaces. Saved workspaces live in the
 // config file (config.Config.Workspaces); settings left empty inherit the
 // global defaults the server was started with.
 type workspaceManager struct {
 	mu       sync.Mutex // serializes config writes and switches
+	store    configStore
 	ws       *workspace.Workspace
 	runner   *runner.Runner   // nil when run_command is off
 	procs    *procman.Manager // nil when run_command is off
@@ -45,7 +61,7 @@ var _ webui.Workspaces = (*workspaceManager)(nil)
 func (m *workspaceManager) List() (webui.WorkspaceList, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.listLocked(config.Load().Workspaces), nil
+	return m.listLocked(m.store.Load().Workspaces), nil
 }
 
 func (m *workspaceManager) listLocked(saved []config.SavedWorkspace) webui.WorkspaceList {
@@ -175,7 +191,7 @@ func (m *workspaceManager) Save(original string, in webui.WorkspaceInput) (webui
 
 	var saved []config.SavedWorkspace
 	var applyActive bool
-	uerr := config.Update(func(c *config.Config) {
+	uerr := m.store.Update(func(c *config.Config) {
 		list := c.Workspaces
 		idx := -1
 		if original != "" {
@@ -228,7 +244,7 @@ func (m *workspaceManager) Delete(name string) (webui.WorkspaceList, error) {
 	defer m.mu.Unlock()
 	var saved []config.SavedWorkspace
 	var err error
-	uerr := config.Update(func(c *config.Config) {
+	uerr := m.store.Update(func(c *config.Config) {
 		idx := findWorkspace(c.Workspaces, name)
 		if idx < 0 {
 			err = webui.ErrWorkspaceNotFound
@@ -250,7 +266,7 @@ func (m *workspaceManager) Switch(ctx context.Context, name string, stopProcesse
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	saved := config.Load().Workspaces
+	saved := m.store.Load().Workspaces
 	idx := findWorkspace(saved, name)
 	if idx < 0 {
 		return webui.SwitchResult{}, webui.ErrWorkspaceNotFound
@@ -300,7 +316,7 @@ func (m *workspaceManager) Switch(ctx context.Context, name string, stopProcesse
 
 	// Remember the active workspace for the next start. A failure here does
 	// not undo the switch.
-	if err := config.Update(func(c *config.Config) { c.Root = root }); err != nil {
+	if err := m.store.Update(func(c *config.Config) { c.Root = root }); err != nil {
 		m.logger.Warn("remember active workspace", "err", err)
 	}
 	m.logger.Info("workspace switched", "name", entry.Name, "stopped_processes", len(stopped))

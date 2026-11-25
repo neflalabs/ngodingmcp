@@ -54,6 +54,7 @@ func newWSHarness(t *testing.T) *wsHarness {
 	authn := auth.New(wsTestToken, "session")
 	ui := webui.New(ws, authn, "test")
 	ui.SetWorkspaces(&workspaceManager{
+		store:    packageConfigStore{},
 		ws:       ws,
 		defaults: webui.WorkspaceDefaults{AllowSensitive: false, MaxFileBytes: 1 << 20},
 		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),

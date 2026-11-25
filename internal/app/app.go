@@ -19,7 +19,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"ngodingmcp/internal/auth"
-	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/oauth"
 	"ngodingmcp/internal/procman"
 	"ngodingmcp/internal/webui"
@@ -116,6 +115,7 @@ func New(cfg Config) (*Server, error) {
 
 	ui.SetProcesses(core.Processes)
 	wsManager := &workspaceManager{
+		store:    packageConfigStore{},
 		ws:       ws,
 		runner:   core.Runner,
 		procs:    core.Processes,
@@ -124,7 +124,7 @@ func New(cfg Config) (*Server, error) {
 	}
 	// The start root is usually the workspace last opened in the Web UI
 	// (config.Config.Root); bring back its per-workspace settings too.
-	if name, changed := wsManager.restoreSaved(config.Load().Workspaces); changed {
+	if name, changed := wsManager.restoreSaved(wsManager.store.Load().Workspaces); changed {
 		logger.Info("restored saved workspace settings", "name", name)
 	}
 	ui.SetWorkspaces(wsManager)
