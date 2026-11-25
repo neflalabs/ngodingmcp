@@ -11,6 +11,7 @@ import (
 	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mayamcpapi "github.com/neflalabs/mayamcp/api"
 
 	"ngodingmcp/internal/fetch"
 	"ngodingmcp/internal/procman"
@@ -82,8 +83,12 @@ func NewWithRunner(ws Workspace, version string, run *runner.Runner) *mcp.Server
 
 // NewWithOptions builds an MCP server bound to ws with the opt-in tools enabled
 // by opts.
-func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
-	name, title, uri, namespace := opts.Name, opts.Title, opts.AgentsURI, opts.MetaNamespace
+// ResolveDefaults returns the effective domain identity, resource URI,
+// _meta namespace and handshake instructions for opts. A lifecycle owner can
+// use these values without constructing a server itself.
+func ResolveDefaults(opts Options) (name, title, uri, namespace, instructions string) {
+	name, title = opts.Name, opts.Title
+	uri, namespace = opts.AgentsURI, opts.MetaNamespace
 	if name == "" {
 		name = defaultName
 	}
@@ -96,16 +101,17 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	if namespace == "" {
 		namespace = defaultMetaNamespace
 	}
-	instructions := opts.Instructions
+	instructions = opts.Instructions
 	if instructions == "" {
 		instructions = fmt.Sprintf(defaultInstructions, uri)
 	}
-	s := mcp.NewServer(
-		&mcp.Implementation{Name: name, Title: title, Version: version},
-		&mcp.ServerOptions{Instructions: instructions},
-	)
-	addResources(s, ws, uri)
+	return name, title, uri, namespace, instructions
+}
 
+// RegisterTools adds every domain tool to s. It does not install identity or
+// middleware: a lifecycle owner (mayamcpapi.NewCore) does that through hooks.
+func RegisterTools(s *mcp.Server, ws Workspace, opts Options) {
+	_, _, _, namespace, _ := ResolveDefaults(opts)
 	// Core tools: registered unless their module is disabled (38 in total).
 	on := newModuleSet(opts.Disabled)
 	addFileTools(s, ws)   // read_file, outline, read_symbol, read_files, write_file, list_files, file_info, mkdir_path, move_path, delete_path
@@ -126,6 +132,36 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	if opts.Downloader != nil {
 		addDownloadFile(s, ws, opts.Downloader) // download_file
 	}
+}
+
+// RegisterResources adds the AGENTS.md resource to s.
+func RegisterResources(s *mcp.Server, ws Workspace, opts Options) {
+	_, _, uri, _, _ := ResolveDefaults(opts)
+	addResources(s, ws, uri)
+}
+
+// SafeErrorMiddleware is the exported form used by the app-level C-lite wrapper.
+func SafeErrorMiddleware(ws Workspace) mcp.Middleware { return safeErrorMiddleware(ws) }
+
+// HoldWorkspaceMiddleware is the exported form used by the app-level C-lite wrapper.
+func HoldWorkspaceMiddleware(ws Workspace) mcp.Middleware { return holdWorkspaceMiddleware(ws) }
+
+// ActivityMiddleware is the exported, domain-aware form used by the app-level
+// C-lite wrapper. It keeps ngodingmcp's _meta exit-code details.
+func ActivityMiddleware(logger *slog.Logger, namespace string) mcp.Middleware {
+	return activityMiddleware(logger, namespace)
+}
+
+func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
+	name, title, _, _, instructions := ResolveDefaults(opts)
+	// Identity resolution is owned by mayamcp; values are already defaulted
+	// above so the advertised implementation is byte-for-byte unchanged.
+	impl := mayamcpapi.ResolveIdentity(mayamcpapi.Identity{
+		Name: name, Title: title, Version: version,
+	})
+	s := mcp.NewServer(&impl, &mcp.ServerOptions{Instructions: instructions})
+	RegisterResources(s, ws, opts)
+	RegisterTools(s, ws, opts)
 
 	// Middleware: scrub host absolute paths from every failed tool result,
 	// hold the workspace for the whole call (a Web UI switch waits for it),
@@ -133,6 +169,7 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	s.AddReceivingMiddleware(safeErrorMiddleware(ws))
 	s.AddReceivingMiddleware(holdWorkspaceMiddleware(ws))
 	if opts.Logger != nil {
+		_, _, _, namespace, _ := ResolveDefaults(opts)
 		s.AddReceivingMiddleware(activityMiddleware(opts.Logger, namespace))
 	}
 

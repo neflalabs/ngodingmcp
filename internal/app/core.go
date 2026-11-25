@@ -8,9 +8,9 @@ package app
 import (
 	"context"
 	"log/slog"
-	"os"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	mayamcpapi "github.com/neflalabs/mayamcp/api"
 
 	"ngodingmcp/internal/config"
 	"ngodingmcp/internal/fetch"
@@ -51,12 +51,12 @@ func (cfg Config) withDefaults() Config {
 func NewCore(cfg Config) (*Core, error) {
 	cfg = cfg.withDefaults()
 
-	logger := cfg.Logger
-	if cfg.LogWriter != nil {
-		logger = slog.New(slog.NewTextHandler(cfg.LogWriter, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	} else if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	}
+	// The logger is now built by mayamcp's level-B helper; behaviour is the
+	// same as before (text handler, info level, stderr by default).
+	logger := mayamcpapi.NewLogger(mayamcpapi.LogOptions{
+		Writer: cfg.LogWriter,
+		Logger: cfg.Logger,
+	})
 
 	disabled, err := mcpserver.ParseModules(cfg.DisableTools)
 	if err != nil {
@@ -102,17 +102,43 @@ func NewCore(cfg Config) (*Core, error) {
 		})
 	}
 
-	mcpServer := mcpserver.NewWithOptions(ws, cfg.Version, mcpserver.Options{
+	toolOpts := mcpserver.Options{
 		Runner:     cmdRunner,
 		Processes:  procMgr,
 		Downloader: downloader,
 		Disabled:   disabled,
 		Logger:     logger,
+	}
+	name, title, _, _, instructions := mcpserver.ResolveDefaults(toolOpts)
+	_, _, _, namespace, _ := mcpserver.ResolveDefaults(toolOpts)
+
+	// C-lite adoption: mayamcp owns identity, logging and the hook lifecycle;
+	// ngodingmcp supplies domain tools, resources and middleware.
+	mayamcpCore := mayamcpapi.NewCore(mayamcpapi.Config{
+		Name:         name,
+		Title:        title,
+		Version:      cfg.Version,
+		Instructions: instructions,
+		Logger:       logger,
+		// ngodingmcp's activity middleware understands its _meta exit codes.
+		DisableActivityMiddleware: true,
+		Register: func(s *mcp.Server) {
+			mcpserver.RegisterTools(s, ws, toolOpts)
+		},
+		RegisterResources: func(s *mcp.Server) {
+			mcpserver.RegisterResources(s, ws, toolOpts)
+		},
+		Middleware: []mcp.Middleware{
+			mcpserver.SafeErrorMiddleware(ws),
+			mcpserver.HoldWorkspaceMiddleware(ws),
+			mcpserver.ActivityMiddleware(logger, namespace),
+		},
 	})
+	mcpServer := mayamcpCore.Server
 	if len(disabled) > 0 {
 		logger.Info("tool modules disabled", "modules", cfg.DisableTools)
 	}
-	toolCount, err := mcpserver.CountTools(context.Background(), mcpServer)
+	toolCount, err := mayamcpapi.CountTools(context.Background(), mcpServer)
 	if err != nil {
 		// Only the TUI summary uses the count; never fail startup over it.
 		logger.Warn("count tools", "err", err)
