@@ -7,6 +7,7 @@
 package mcpserver
 
 import (
+	"fmt"
 	"log/slog"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -16,10 +17,16 @@ import (
 	"ngodingmcp/internal/runner"
 )
 
-const instructions = `This server is a sandboxed text editor for a workspace on disk.
+const (
+	defaultName      = "ngodingmcp"
+	defaultTitle     = "NgodingMCP"
+	defaultAgentsURI = "ngodingmcp://agents"
+)
+
+const defaultInstructions = `This server is a sandboxed text editor for a workspace on disk.
 
 Paths are relative to the workspace root; leading slashes are ignored and ".."
-cannot escape. If available, read the ngodingmcp://agents resource first: it
+cannot escape. If available, read the %s resource first: it
 holds project structure, conventions and test commands.
 
 Reading: list_files/search_text to locate; outline then read_symbol to read one
@@ -45,6 +52,16 @@ type Options struct {
 	// Logger, when non-nil, receives one concise activity line per tool call
 	// (tool, target, ✓/✗, duration). Contents and secrets are never logged.
 	Logger *slog.Logger
+	// Name and Title override the MCP implementation identity. Empty keeps
+	// the defaults, so existing clients see no change.
+	Name  string
+	Title string
+	// Instructions overrides the handshake instructions; empty keeps the
+	// editor workflow below.
+	Instructions string
+	// AgentsURI overrides the URI of the AGENTS.md resource (default
+	// ngodingmcp://agents).
+	AgentsURI string
 }
 
 // New builds an MCP server bound to ws.
@@ -61,11 +78,25 @@ func NewWithRunner(ws Workspace, version string, run *runner.Runner) *mcp.Server
 // NewWithOptions builds an MCP server bound to ws with the opt-in tools enabled
 // by opts.
 func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
+	name, title, uri := opts.Name, opts.Title, opts.AgentsURI
+	if name == "" {
+		name = defaultName
+	}
+	if title == "" {
+		title = defaultTitle
+	}
+	if uri == "" {
+		uri = defaultAgentsURI
+	}
+	instructions := opts.Instructions
+	if instructions == "" {
+		instructions = fmt.Sprintf(defaultInstructions, uri)
+	}
 	s := mcp.NewServer(
-		&mcp.Implementation{Name: "ngodingmcp", Title: "NgodingMCP", Version: version},
+		&mcp.Implementation{Name: name, Title: title, Version: version},
 		&mcp.ServerOptions{Instructions: instructions},
 	)
-	addResources(s, ws)
+	addResources(s, ws, uri)
 
 	// Core tools: registered unless their module is disabled (38 in total).
 	on := newModuleSet(opts.Disabled)

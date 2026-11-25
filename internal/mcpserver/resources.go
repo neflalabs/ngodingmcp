@@ -11,11 +11,9 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const agentsURI = "ngodingmcp://agents"
-
-func addResources(s *mcp.Server, ws Workspace) {
+func addResources(s *mcp.Server, ws Workspace, uri string) {
 	s.AddResource(&mcp.Resource{
-		URI:         agentsURI,
+		URI:         uri,
 		Name:        "AGENTS.md",
 		Title:       "Project guide (AGENTS.md)",
 		Description: "Project structure, conventions and test commands from AGENTS.md at the workspace root.",
