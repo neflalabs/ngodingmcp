@@ -73,10 +73,11 @@ UI, TUI, systemd) supaya bisa dipakai ulang:
   `gitwrite` juga punya interface sempit masing-masing; tipe konkret
   `workspace.Workspace` memenuhinya.
 * `mcpserver.Options` berisi opsi tool (`Runner`, `Processes`, `Downloader`,
-  `Disabled`, `Logger`) dan opsi identitas (`Name`, `Title`, `Instructions`,
-  `AgentsURI`). Semua opsi identitas punya default yang sama seperti sebelumnya
-  (`ngodingmcp`, `NgodingMCP`, teks editor, `ngodingmcp://agents`), jadi perilaku
-  server tidak berubah.
+  `Disabled`, `Logger`), opsi identitas (`Name`, `Title`, `Instructions`,
+  `AgentsURI`), dan `MetaNamespace` untuk prefix `_meta` `run_command`. Semua
+  punya default yang sama seperti sebelumnya (`ngodingmcp`, `NgodingMCP`, teks
+  editor, `ngodingmcp://agents`, `ngodingmcp/*`), jadi perilaku server tidak
+  berubah.
 * `*mcp.Server` yang dikembalikan bersifat transport-agnostic: bisa dijalankan
   lewat HTTP maupun `mcp.StdioTransport`. `ngodingmcp` sendiri tetap memakai
   HTTP stateless.

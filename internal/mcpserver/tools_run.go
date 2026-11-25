@@ -22,7 +22,7 @@ type runCommandArgs struct {
 	Full           bool     `json:"full,omitempty" jsonschema:"return the complete output instead of the compact default"`
 }
 
-func addRunCommand(s *mcp.Server, run *runner.Runner) {
+func addRunCommand(s *mcp.Server, run *runner.Runner, namespace string) {
 	desc := "Run an allowlisted command in the workspace root (no shell); output is compacted by default, full=true for everything. " +
 		allowlistDescription(run.Allowlist(), run.ExactAllowlist())
 	// The transcript in the text content is the whole result; a structured
@@ -50,25 +50,31 @@ func addRunCommand(s *mcp.Server, run *runner.Runner) {
 			return nil, nil, err
 		}
 		result := textResult(formatRunResult(res, run.Timeout(), in.Full))
-		result.Meta = runMeta(res)
+		result.Meta = runMetaWith(namespace, res)
 		return result, nil, nil
 	})
 }
 
-// _meta keys for a run_command result. They are namespaced as the MCP spec
-// asks for implementation-specific _meta entries; clients do not show _meta
-// to the model.
-const (
-	metaExitCode = "ngodingmcp/exitCode"
-	metaTimedOut = "ngodingmcp/timedOut"
-)
+// _meta keys are namespaced as the MCP spec asks for implementation-specific
+// entries; clients do not show _meta to the model. The namespace is an option
+// so another server can reuse the same run tool without the ngodingmcp prefix.
+func metaKeys(namespace string) (exitCode, timedOut string) {
+	return namespace + "/exitCode", namespace + "/timedOut"
+}
 
-// runMeta reports the exit status of a finished command in _meta.
-func runMeta(res runner.Result) mcp.Meta {
+// runMetaWith reports the exit status of a finished command in _meta.
+func runMetaWith(namespace string, res runner.Result) mcp.Meta {
+	exitKey, timedKey := metaKeys(namespace)
 	return mcp.Meta{
-		metaExitCode: res.ExitCode,
-		metaTimedOut: res.TimedOut,
+		exitKey:  res.ExitCode,
+		timedKey: res.TimedOut,
 	}
+}
+
+// runMeta keeps the default namespace for tests and callers that do not
+// configure Options.MetaNamespace.
+func runMeta(res runner.Result) mcp.Meta {
+	return runMetaWith(defaultMetaNamespace, res)
 }
 
 // formatRunResult renders a finished command as a terminal-style transcript.

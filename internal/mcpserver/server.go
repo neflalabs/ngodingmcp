@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	defaultName      = "ngodingmcp"
-	defaultTitle     = "NgodingMCP"
-	defaultAgentsURI = "ngodingmcp://agents"
+	defaultName          = "ngodingmcp"
+	defaultTitle         = "NgodingMCP"
+	defaultAgentsURI     = "ngodingmcp://agents"
+	defaultMetaNamespace = "ngodingmcp"
 )
 
 const defaultInstructions = `This server is a sandboxed text editor for a workspace on disk.
@@ -62,6 +63,10 @@ type Options struct {
 	// AgentsURI overrides the URI of the AGENTS.md resource (default
 	// ngodingmcp://agents).
 	AgentsURI string
+	// MetaNamespace prefixes the implementation-specific _meta keys of
+	// run_command (default "ngodingmcp"). The model does not see _meta, but
+	// clients and the activity log do.
+	MetaNamespace string
 }
 
 // New builds an MCP server bound to ws.
@@ -78,7 +83,7 @@ func NewWithRunner(ws Workspace, version string, run *runner.Runner) *mcp.Server
 // NewWithOptions builds an MCP server bound to ws with the opt-in tools enabled
 // by opts.
 func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
-	name, title, uri := opts.Name, opts.Title, opts.AgentsURI
+	name, title, uri, namespace := opts.Name, opts.Title, opts.AgentsURI, opts.MetaNamespace
 	if name == "" {
 		name = defaultName
 	}
@@ -87,6 +92,9 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	}
 	if uri == "" {
 		uri = defaultAgentsURI
+	}
+	if namespace == "" {
+		namespace = defaultMetaNamespace
 	}
 	instructions := opts.Instructions
 	if instructions == "" {
@@ -110,7 +118,7 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 
 	// Opt-in tools: registered only when the matching option is set.
 	if opts.Runner != nil {
-		addRunCommand(s, opts.Runner) // run_command
+		addRunCommand(s, opts.Runner, namespace) // run_command
 	}
 	if opts.Processes != nil {
 		addProcessTools(s, opts.Processes) // start_process, list_processes, process_logs, stop_process, restart_process, stop_all_processes
@@ -125,7 +133,7 @@ func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	s.AddReceivingMiddleware(safeErrorMiddleware(ws))
 	s.AddReceivingMiddleware(holdWorkspaceMiddleware(ws))
 	if opts.Logger != nil {
-		s.AddReceivingMiddleware(activityMiddleware(opts.Logger))
+		s.AddReceivingMiddleware(activityMiddleware(opts.Logger, namespace))
 	}
 
 	return s

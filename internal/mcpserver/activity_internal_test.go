@@ -12,6 +12,7 @@ import (
 )
 
 func TestActivityOutcome(t *testing.T) {
+	exitKey, _ := metaKeys(defaultMetaNamespace)
 	cases := []struct {
 		name   string
 		res    mcp.Result
@@ -25,7 +26,7 @@ func TestActivityOutcome(t *testing.T) {
 		{"command exit 1", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: 1})}, nil, false, "exit 1"},
 		{"command exit 0", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: 0})}, nil, true, ""},
 		{"command timeout", &mcp.CallToolResult{Meta: runMeta(runner.Result{ExitCode: -1, TimedOut: true})}, nil, false, "timed out"},
-		{"command exit after JSON round trip", &mcp.CallToolResult{Meta: mcp.Meta{metaExitCode: float64(2)}}, nil, false, "exit 2"},
+		{"command exit after JSON round trip", &mcp.CallToolResult{Meta: mcp.Meta{exitKey: float64(2)}}, nil, false, "exit 2"},
 		{"stopped process info with old exit", &mcp.CallToolResult{StructuredContent: map[string]any{"name": "dev", "argv": []string{"bun", "run", "dev"}, "exitCode": 2, "pid": 42}}, nil, true, ""},
 		{"unrelated meta", &mcp.CallToolResult{Meta: mcp.Meta{"progressToken": "x"}}, nil, true, ""},
 	}
@@ -34,6 +35,16 @@ func TestActivityOutcome(t *testing.T) {
 		if ok != c.ok || detail != c.detail {
 			t.Errorf("%s: got (%v, %q), want (%v, %q)", c.name, ok, detail, c.ok, c.detail)
 		}
+	}
+}
+
+func TestActivityOutcomeCustomMetaNamespace(t *testing.T) {
+	res := &mcp.CallToolResult{Meta: runMetaWith("custom", runner.Result{ExitCode: 3})}
+	if ok, detail := activityOutcomeWith(res, nil, "custom"); ok || detail != "exit 3" {
+		t.Fatalf("custom namespace: got (%v, %q), want (false, %q)", ok, detail, "exit 3")
+	}
+	if ok, detail := activityOutcome(res, nil); !ok || detail != "" {
+		t.Fatalf("default namespace should ignore custom keys: got (%v, %q)", ok, detail)
 	}
 }
 

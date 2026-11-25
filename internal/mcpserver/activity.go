@@ -31,7 +31,7 @@ const maxTargetLen = 60
 // the outcome, the duration and the token annotation are logged. File
 // contents, edit text, environment values, tokens and error messages are
 // never logged.
-func activityMiddleware(logger *slog.Logger) mcp.Middleware {
+func activityMiddleware(logger *slog.Logger, namespace string) mcp.Middleware {
 	return func(next mcp.MethodHandler) mcp.MethodHandler {
 		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
 			if method != "tools/call" {
@@ -45,7 +45,7 @@ func activityMiddleware(logger *slog.Logger) mcp.Middleware {
 				name = cleanTarget(r.Params.Name)
 				target = activityTarget(r.Params.Arguments)
 			}
-			ok, detail := activityOutcome(res, err)
+			ok, detail := activityOutcomeWith(res, err, namespace)
 			line := ActivityLine(name, target, ok, detail, time.Since(started))
 			attrs := []any{}
 			if size, ok := measureResult(res); ok {
@@ -86,8 +86,14 @@ func ActivityLine(tool, target string, ok bool, detail string, d time.Duration) 
 	return strings.Join(parts, " ")
 }
 
-// activityOutcome decides success and a short, content-free detail.
+// activityOutcome uses the default _meta namespace; tests and callers that
+// configure Options.MetaNamespace should use activityOutcomeWith instead.
 func activityOutcome(res mcp.Result, err error) (bool, string) {
+	return activityOutcomeWith(res, err, defaultMetaNamespace)
+}
+
+// activityOutcomeWith decides success and a short, content-free detail.
+func activityOutcomeWith(res mcp.Result, err error, namespace string) (bool, string) {
 	if err != nil {
 		return false, "error"
 	}
@@ -99,24 +105,39 @@ func activityOutcome(res mcp.Result, err error) (bool, string) {
 		return false, "error"
 	}
 	// run_command reports a failing command as a normal result with a
-	// non-zero exit code in _meta (see runMeta); surface that as a failure.
+	// non-zero exit code in _meta (see runMetaWith); surface that as a failure.
 	if len(r.Meta) > 0 {
 		if raw, mErr := json.Marshal(r.Meta); mErr == nil {
-			var st struct {
-				ExitCode *int `json:"ngodingmcp/exitCode"`
-				TimedOut bool `json:"ngodingmcp/timedOut"`
-			}
-			if json.Unmarshal(raw, &st) == nil {
+			var meta map[string]any
+			if json.Unmarshal(raw, &meta) == nil {
+				exitKey, timedKey := metaKeys(namespace)
+				timed, _ := meta[timedKey].(bool)
+				code, hasCode := metaNumber(meta[exitKey])
 				switch {
-				case st.TimedOut:
+				case timed:
 					return false, "timed out"
-				case st.ExitCode != nil && *st.ExitCode != 0:
-					return false, fmt.Sprintf("exit %d", *st.ExitCode)
+				case hasCode && code != 0:
+					return false, fmt.Sprintf("exit %d", code)
 				}
 			}
 		}
 	}
 	return true, ""
+}
+
+// metaNumber accepts the numeric forms _meta can carry: int from a local
+// result, float64 after a JSON round trip, or json.Number from a decoder.
+func metaNumber(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case float64:
+		return int(n), true
+	case json.Number:
+		i, err := n.Int64()
+		return int(i), err == nil
+	}
+	return 0, false
 }
 
 // resultSize summarises what one tool result costs in context tokens, kept

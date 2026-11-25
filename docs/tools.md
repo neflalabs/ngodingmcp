@@ -55,8 +55,10 @@ yang diteruskan ke model, jadi isi yang sama tidak dikirim dua kali:
   mengirim `structuredContent`, tapi tanpa `outputSchema`.
 - `file_info` dan `list_processes` tetap punya `outputSchema`.
 - Exit code `run_command` ada di teks dan di `_meta`
-  (`ngodingmcp/exitCode`, `ngodingmcp/timedOut`). `ngodingmcp/timedOut` hanya
-  berarti timeout batas server; deadline pemanggil menghasilkan error
+  (`ngodingmcp/exitCode`, `ngodingmcp/timedOut` secara default). Prefix bisa
+  diganti lewat `mcpserver.Options.MetaNamespace` tanpa mengubah default;
+  activity log membaca prefix yang sama. `ngodingmcp/timedOut` hanya berarti
+  timeout batas server; deadline pemanggil menghasilkan error
   `caller deadline exceeded` tanpa hasil `timedOut`.
 
 ## Tool inti (selalu aktif)
