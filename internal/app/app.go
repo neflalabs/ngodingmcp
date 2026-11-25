@@ -12,7 +12,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"syscall"
 	"time"
@@ -21,12 +20,8 @@ import (
 
 	"ngodingmcp/internal/auth"
 	"ngodingmcp/internal/config"
-	"ngodingmcp/internal/fetch"
-	"ngodingmcp/internal/mcpserver"
 	"ngodingmcp/internal/oauth"
 	"ngodingmcp/internal/procman"
-	"ngodingmcp/internal/runner"
-	"ngodingmcp/internal/selfrestart"
 	"ngodingmcp/internal/webui"
 	"ngodingmcp/internal/workspace"
 )
@@ -98,36 +93,12 @@ type Server struct {
 // New prepares a Server. The workspace root is created if missing, and a random
 // token is generated when cfg.Token is empty.
 func New(cfg Config) (*Server, error) {
-	if cfg.Addr == "" {
-		cfg.Addr = config.DefaultAddr
-	}
-	if cfg.MaxFileBytes <= 0 {
-		cfg.MaxFileBytes = 2 << 20
-	}
-	if cfg.Version == "" {
-		cfg.Version = "dev"
-	}
-
-	logger := cfg.Logger
-	if cfg.LogWriter != nil {
-		logger = slog.New(slog.NewTextHandler(cfg.LogWriter, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	} else if logger == nil {
-		logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	}
-
-	disabled, err := mcpserver.ParseModules(cfg.DisableTools)
+	cfg = cfg.withDefaults()
+	core, err := NewCore(cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	ws, err := workspace.New(cfg.Root, cfg.MaxFileBytes)
-	if err != nil {
-		return nil, err
-	}
-	ws.SetAllowSensitive(cfg.AllowSensitive)
-	if cfg.AllowSensitive {
-		logger.Warn("sensitive-file protection is disabled (--allow-sensitive)")
-	}
+	logger, ws := core.Logger, core.Workspace
 
 	token := strings.TrimSpace(cfg.Token)
 	generated := false
@@ -143,33 +114,11 @@ func New(cfg Config) (*Server, error) {
 	ui := webui.New(ws, authn, cfg.Version)
 	ui.SetUploads(cfg.UploadMaxBytes, logger)
 
-	var cmdRunner *runner.Runner
-	var procMgr *procman.Manager
-	if cfg.AllowRun {
-		allow, exact := cfg.RunAllowlist, cfg.RunExactAllowlist
-		if len(allow) == 0 && len(exact) == 0 {
-			allow, exact = runner.DefaultPolicy()
-		}
-		cmdRunner, err = runner.New(runner.Options{
-			Root:           ws.Root(),
-			Allowlist:      allow,
-			ExactAllowlist: exact,
-			Timeout:        cfg.RunTimeout,
-			Restart:        selfrestart.New(logger).Schedule,
-		})
-		if err != nil {
-			return nil, err
-		}
-		procMgr, err = procman.New(procman.Options{Root: ws.Root(), Runner: cmdRunner})
-		if err != nil {
-			return nil, err
-		}
-	}
-	ui.SetProcesses(procMgr)
+	ui.SetProcesses(core.Processes)
 	wsManager := &workspaceManager{
 		ws:       ws,
-		runner:   cmdRunner,
-		procs:    procMgr,
+		runner:   core.Runner,
+		procs:    core.Processes,
 		defaults: webui.WorkspaceDefaults{AllowSensitive: cfg.AllowSensitive, MaxFileBytes: ws.MaxRead()},
 		logger:   logger,
 	}
@@ -180,32 +129,8 @@ func New(cfg Config) (*Server, error) {
 	}
 	ui.SetWorkspaces(wsManager)
 
-	var downloader *fetch.Client
-	if cfg.AllowDownload {
-		downloader = fetch.New(fetch.Options{
-			MaxBytes:   cfg.DownloadMaxBytes,
-			AllowHosts: cfg.DownloadAllowHosts,
-		})
-	}
-
-	mcpServer := mcpserver.NewWithOptions(ws, cfg.Version, mcpserver.Options{
-		Runner:     cmdRunner,
-		Processes:  procMgr,
-		Downloader: downloader,
-		Disabled:   disabled,
-		Logger:     logger,
-	})
-	if len(disabled) > 0 {
-		logger.Info("tool modules disabled", "modules", cfg.DisableTools)
-	}
-	toolCount, err := mcpserver.CountTools(context.Background(), mcpServer)
-	if err != nil {
-		// Only the TUI summary uses the count; never fail startup over it.
-		logger.Warn("count tools", "err", err)
-		toolCount = 0
-	}
 	mcpHandler := mcp.NewStreamableHTTPHandler(
-		func(*http.Request) *mcp.Server { return mcpServer },
+		func(*http.Request) *mcp.Server { return core.MCPServer },
 		// Stateless: every tool call is plain request/response, so no session
 		// state is kept. A restart then never invalidates a client's
 		// Mcp-Session-Id, and chats keep working without re-initializing.
@@ -249,9 +174,9 @@ func New(cfg Config) (*Server, error) {
 		generated: generated,
 		version:   cfg.Version,
 		cfg:       cfg,
-		procs:     procMgr,
-		download:  downloader != nil,
-		tools:     toolCount,
+		procs:     core.Processes,
+		download:  core.Downloader != nil,
+		tools:     core.ToolCount,
 		logger:    logger,
 		serveErr:  make(chan error, 1),
 		http: &http.Server{
