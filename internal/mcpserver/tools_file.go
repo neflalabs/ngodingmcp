@@ -15,7 +15,7 @@ import (
 )
 
 // addFileTools registers the file and directory tools.
-func addFileTools(s *mcp.Server, ws *workspace.Workspace) {
+func addFileTools(s *mcp.Server, ws Workspace) {
 	addReadFile(s, ws)
 	addReadTools(s, ws)
 	addWriteFile(s, ws)
@@ -37,7 +37,7 @@ type readFileArgs struct {
 
 type readFileOut = workspace.ReadResult
 
-func addReadFile(s *mcp.Server, ws *workspace.Workspace) {
+func addReadFile(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "read_file",
 		Description: "Read text as numbered lines; offset/limit slice, if_changed_since skips unchanged.",
@@ -75,7 +75,7 @@ type writeFileOut struct {
 	Bytes int    `json:"bytes"`
 }
 
-func addWriteFile(s *mcp.Server, ws *workspace.Workspace) {
+func addWriteFile(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "write_file",
 		Description: "Create or overwrite a file atomically; parent directories are created.",
@@ -163,7 +163,7 @@ type listFilesOut struct {
 	Truncated bool              `json:"truncated,omitempty"`
 }
 
-func addListFiles(s *mcp.Server, ws *workspace.Workspace) {
+func addListFiles(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "list_files",
 		Description: "List files, one level or recursively; recursive caps at 300 entries (depth/max_entries tune it).",
@@ -202,7 +202,7 @@ type fileInfoOut struct {
 	workspace.Info
 }
 
-func addFileInfo(s *mcp.Server, ws *workspace.Workspace) {
+func addFileInfo(s *mcp.Server, ws Workspace) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "file_info",
 		Description: "File or directory metadata: size, modified time, line count.",
@@ -228,7 +228,7 @@ type mkdirPathOut struct {
 	Path string `json:"path"`
 }
 
-func addMkdirPath(s *mcp.Server, ws *workspace.Workspace) {
+func addMkdirPath(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "mkdir_path",
 		Description: "Create a directory and any missing parents.",
@@ -253,7 +253,7 @@ type movePathOut struct {
 	Path string `json:"path"`
 }
 
-func addMovePath(s *mcp.Server, ws *workspace.Workspace) {
+func addMovePath(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "move_path",
 		Description: "Move or rename a file or directory; refuses to overwrite an existing destination.",
@@ -278,7 +278,7 @@ type deletePathOut struct {
 	Path string `json:"path"`
 }
 
-func addDeletePath(s *mcp.Server, ws *workspace.Workspace) {
+func addDeletePath(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "delete_path",
 		Description: "Delete a file or directory; recursive=true for a non-empty one. The workspace root is refused.",

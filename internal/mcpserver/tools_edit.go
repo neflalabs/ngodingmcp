@@ -15,7 +15,7 @@ import (
 )
 
 // addEditTools registers the in-place editing tools.
-func addEditTools(s *mcp.Server, ws *workspace.Workspace) {
+func addEditTools(s *mcp.Server, ws Workspace) {
 	addReplaceText(s, ws)
 	addEditFile(s, ws)
 	addInsertText(s, ws)
@@ -37,7 +37,7 @@ type replaceTextOut struct {
 	Count int    `json:"count"`
 }
 
-func addReplaceText(s *mcp.Server, ws *workspace.Workspace) {
+func addReplaceText(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_text",
 		Description: "Replace an exact substring; it must occur once unless replace_all=true.",
@@ -64,7 +64,7 @@ type editFileOut struct {
 	workspace.EditResult
 }
 
-func addEditFile(s *mcp.Server, ws *workspace.Workspace) {
+func addEditFile(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "edit_file",
 		Description: "Apply exact-text edits to one file, all or nothing; returns a unified diff. dry_run=true previews.",
@@ -103,7 +103,7 @@ type insertTextOut struct {
 	Line int    `json:"line"`
 }
 
-func addInsertText(s *mcp.Server, ws *workspace.Workspace) {
+func addInsertText(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "insert_text",
 		Description: "Insert text before a 1-based line; line = total_lines + 1 appends.",
@@ -131,7 +131,7 @@ type deleteLinesOut struct {
 	TotalLines int    `json:"totalLines"`
 }
 
-func addDeleteLines(s *mcp.Server, ws *workspace.Workspace) {
+func addDeleteLines(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "delete_lines",
 		Description: "Delete an inclusive range of 1-based lines from a file.",
@@ -160,7 +160,7 @@ type replaceLinesOut struct {
 	TotalLines int    `json:"totalLines"`
 }
 
-func addReplaceLines(s *mcp.Server, ws *workspace.Workspace) {
+func addReplaceLines(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "replace_lines",
 		Description: "Replace an inclusive range of 1-based lines with new content.",

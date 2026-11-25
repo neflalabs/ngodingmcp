@@ -24,6 +24,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
@@ -35,6 +36,13 @@ import (
 
 	"ngodingmcp/internal/workspace"
 )
+
+// Workspace is the minimal destination contract Download needs. A narrower
+// interface keeps fetch independent of the concrete workspace implementation.
+type Workspace interface {
+	CheckWritable(rel string, overwrite bool) (string, error)
+	WriteStream(rel string, r io.Reader, opts workspace.StreamOptions) (workspace.StreamResult, error)
+}
 
 const (
 	// DefaultMaxBytes is the default download size limit (20 MiB).
@@ -155,7 +163,7 @@ func (c *Client) AllowHosts() []string { return c.opts.AllowHosts }
 
 // Download fetches rawURL and stores it at dest inside ws. When wantSHA256 is
 // set (64 hex characters), the data must match it or nothing is written.
-func (c *Client) Download(ctx context.Context, ws *workspace.Workspace, rawURL, dest string, overwrite bool, wantSHA256 string) (Result, error) {
+func (c *Client) Download(ctx context.Context, ws Workspace, rawURL, dest string, overwrite bool, wantSHA256 string) (Result, error) {
 	wantSHA256 = strings.ToLower(strings.TrimSpace(wantSHA256))
 	if wantSHA256 != "" && !sha256Hex.MatchString(wantSHA256) {
 		return Result{}, errors.New("sha256 must be 64 hexadecimal characters")

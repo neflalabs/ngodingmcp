@@ -25,7 +25,7 @@ const (
 	maxBatchReadBytes = 1 << 20
 )
 
-func addReadTools(s *mcp.Server, ws *workspace.Workspace) {
+func addReadTools(s *mcp.Server, ws Workspace) {
 	addOutline(s, ws)
 	addReadSymbol(s, ws)
 	addReadFiles(s, ws)
@@ -38,7 +38,7 @@ type outlineArgs struct {
 	IfChangedSince string `json:"if_changed_since,omitempty" jsonschema:"hash from a previous read; unchanged when equal"`
 }
 
-func addOutline(s *mcp.Server, ws *workspace.Workspace) {
+func addOutline(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "outline",
 		Description: "List top-level symbols with line ranges; Go AST plus a JS/TS fallback.",
@@ -84,7 +84,7 @@ type readSymbolArgs struct {
 	IfChangedSince string `json:"if_changed_since,omitempty" jsonschema:"hash from a previous read; unchanged when equal"`
 }
 
-func addReadSymbol(s *mcp.Server, ws *workspace.Workspace) {
+func addReadSymbol(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "read_symbol",
 		Description: "Read one top-level function or type by name.",
@@ -118,7 +118,7 @@ type readFilesArgs struct {
 	MaxBytes int            `json:"max_bytes,omitempty" jsonschema:"total content budget (default 65536, max 1048576)"`
 }
 
-func addReadFiles(s *mcp.Server, ws *workspace.Workspace) {
+func addReadFiles(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "read_files",
 		Description: "Read several files or ranges in one call; total content capped (default 64 KiB).",

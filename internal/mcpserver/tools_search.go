@@ -28,7 +28,7 @@ const (
 )
 
 // addSearchTools registers search_text and search_and_replace.
-func addSearchTools(s *mcp.Server, ws *workspace.Workspace) {
+func addSearchTools(s *mcp.Server, ws Workspace) {
 	addSearchText(s, ws)
 	addSearchAndReplace(s, ws)
 }
@@ -46,7 +46,7 @@ type searchTextOut struct {
 	Matches []workspace.Match `json:"matches"`
 }
 
-func addSearchText(s *mcp.Server, ws *workspace.Workspace) {
+func addSearchText(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "search_text",
 		Description: "Regex search over file contents, grouped by file (default 30 matches; dependency/cache dirs skipped).",
@@ -120,7 +120,7 @@ type searchReplaceOut struct {
 	workspace.SearchReplaceResult
 }
 
-func addSearchAndReplace(s *mcp.Server, ws *workspace.Workspace) {
+func addSearchAndReplace(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "search_and_replace",
 		Description: "Regex replace across files; dry_run=true previews (dependency/cache dirs skipped).",

@@ -14,7 +14,6 @@ import (
 	"ngodingmcp/internal/fetch"
 	"ngodingmcp/internal/procman"
 	"ngodingmcp/internal/runner"
-	"ngodingmcp/internal/workspace"
 )
 
 const instructions = `This server is a sandboxed text editor for a workspace on disk.
@@ -49,19 +48,19 @@ type Options struct {
 }
 
 // New builds an MCP server bound to ws.
-func New(ws *workspace.Workspace, version string) *mcp.Server {
+func New(ws Workspace, version string) *mcp.Server {
 	return NewWithOptions(ws, version, Options{})
 }
 
 // NewWithRunner builds an MCP server bound to ws. When run is non-nil, the
 // opt-in run_command tool is registered as well.
-func NewWithRunner(ws *workspace.Workspace, version string, run *runner.Runner) *mcp.Server {
+func NewWithRunner(ws Workspace, version string, run *runner.Runner) *mcp.Server {
 	return NewWithOptions(ws, version, Options{Runner: run})
 }
 
 // NewWithOptions builds an MCP server bound to ws with the opt-in tools enabled
 // by opts.
-func NewWithOptions(ws *workspace.Workspace, version string, opts Options) *mcp.Server {
+func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	s := mcp.NewServer(
 		&mcp.Implementation{Name: "ngodingmcp", Title: "NgodingMCP", Version: version},
 		&mcp.ServerOptions{Instructions: instructions},

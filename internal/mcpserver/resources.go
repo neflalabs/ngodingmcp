@@ -9,13 +9,11 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-
-	"ngodingmcp/internal/workspace"
 )
 
 const agentsURI = "ngodingmcp://agents"
 
-func addResources(s *mcp.Server, ws *workspace.Workspace) {
+func addResources(s *mcp.Server, ws Workspace) {
 	s.AddResource(&mcp.Resource{
 		URI:         agentsURI,
 		Name:        "AGENTS.md",

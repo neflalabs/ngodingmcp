@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"ngodingmcp/internal/workspace"
 )
 
 func TestStatusOutsideRepo(t *testing.T) {
@@ -79,7 +81,7 @@ func TestAllowSensitiveShowsSensitiveFiles(t *testing.T) {
 	}
 
 	// With the guard off the file is an ordinary untracked file.
-	g.ws.SetAllowSensitive(true)
+	g.ws.(*workspace.Workspace).SetAllowSensitive(true)
 	out, err = g.Status(context.Background())
 	if err != nil {
 		t.Fatal(err)

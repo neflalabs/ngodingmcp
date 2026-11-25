@@ -12,7 +12,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"ngodingmcp/internal/fetch"
-	"ngodingmcp/internal/workspace"
 )
 
 type downloadFileArgs struct {
@@ -26,7 +25,7 @@ type downloadFileOut struct {
 	fetch.Result
 }
 
-func addDownloadFile(s *mcp.Server, ws *workspace.Workspace, dl *fetch.Client) {
+func addDownloadFile(s *mcp.Server, ws Workspace, dl *fetch.Client) {
 	limit := fmt.Sprintf("%d bytes", dl.MaxBytes())
 	if dl.MaxBytes()%(1<<20) == 0 {
 		limit = fmt.Sprintf("%d MiB", dl.MaxBytes()>>20)

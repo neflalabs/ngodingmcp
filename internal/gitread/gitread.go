@@ -30,14 +30,23 @@ var ErrNoGit = errors.New("git is not installed on the server")
 // ErrNotRepo is returned when the workspace root is not inside a git work tree.
 var ErrNotRepo = errors.New("workspace is not a git repository")
 
+// Workspace is the minimal contract read-only git needs. Narrowing it keeps
+// gitread usable with any workspace implementation.
+type Workspace interface {
+	Root() string
+	CleanPath(rel string) (string, error)
+	AllowSensitive() bool
+	SafeError(err error) error
+}
+
 // Git runs read-only git commands for one workspace.
 type Git struct {
-	ws      *workspace.Workspace
+	ws      Workspace
 	timeout time.Duration
 }
 
 // New returns a Git bound to ws.
-func New(ws *workspace.Workspace) *Git {
+func New(ws Workspace) *Git {
 	return &Git{ws: ws, timeout: DefaultTimeout}
 }
 

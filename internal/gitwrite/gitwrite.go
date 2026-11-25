@@ -53,9 +53,19 @@ var (
 	ErrNothingStaged = errors.New("nothing staged to commit; stage files with git_add first")
 )
 
+// Workspace is the minimal contract git write commands need. Narrowing it
+// keeps gitwrite usable with any workspace implementation.
+type Workspace interface {
+	Root() string
+	CleanPath(rel string) (string, error)
+	AllowSensitive() bool
+	ScrubPaths(s string) string
+	SafeError(err error) error
+}
+
 // Git runs git write commands for one workspace.
 type Git struct {
-	ws            *workspace.Workspace
+	ws            Workspace
 	timeout       time.Duration
 	remoteTimeout time.Duration
 	// allowLocal lets tests use a bare repository on disk as a remote. It
@@ -64,7 +74,7 @@ type Git struct {
 }
 
 // New returns a Git bound to ws.
-func New(ws *workspace.Workspace) *Git {
+func New(ws Workspace) *Git {
 	return &Git{ws: ws, timeout: DefaultTimeout, remoteTimeout: RemoteTimeout}
 }
 

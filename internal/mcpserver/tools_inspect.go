@@ -15,7 +15,7 @@ import (
 )
 
 // addInspectTools registers workspace_stats, validate_syntax and count_tokens.
-func addInspectTools(s *mcp.Server, ws *workspace.Workspace) {
+func addInspectTools(s *mcp.Server, ws Workspace) {
 	addWorkspaceStats(s, ws)
 	addValidateSyntax(s, ws)
 	addCountTokens(s, ws)
@@ -29,7 +29,7 @@ type workspaceStatsOut struct {
 	workspace.WorkspaceStats
 }
 
-func addWorkspaceStats(s *mcp.Server, ws *workspace.Workspace) {
+func addWorkspaceStats(s *mcp.Server, ws Workspace) {
 	addTextTool(s, &mcp.Tool{
 		Name:        "workspace_stats",
 		Description: "Workspace totals: files, lines, bytes, per-extension breakdown, largest and newest files.",
@@ -91,7 +91,7 @@ type validateSyntaxOut struct {
 	workspace.SyntaxResult
 }
 
-func addValidateSyntax(s *mcp.Server, ws *workspace.Workspace) {
+func addValidateSyntax(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "validate_syntax",
 		Description: "Check syntax: Go/JSON parse, JS/TS/CSS delimiters; other types return check=none.",
@@ -132,7 +132,7 @@ type countTokensOut struct {
 	TotalEstimatedTokens int                    `json:"totalEstimatedTokens"`
 }
 
-func addCountTokens(s *mcp.Server, ws *workspace.Workspace) {
+func addCountTokens(s *mcp.Server, ws Workspace) {
 	addUntypedTool(s, &mcp.Tool{
 		Name:        "count_tokens",
 		Description: "Estimate tokens (bytes/4) without returning contents; dependency/cache dirs are skipped.",
