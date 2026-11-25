@@ -146,12 +146,6 @@ func SafeErrorMiddleware(ws Workspace) mcp.Middleware { return safeErrorMiddlewa
 // HoldWorkspaceMiddleware is the exported form used by the app-level C-lite wrapper.
 func HoldWorkspaceMiddleware(ws Workspace) mcp.Middleware { return holdWorkspaceMiddleware(ws) }
 
-// ActivityMiddleware is the exported, domain-aware form used by the app-level
-// C-lite wrapper. It keeps ngodingmcp's _meta exit-code details.
-func ActivityMiddleware(logger *slog.Logger, namespace string) mcp.Middleware {
-	return activityMiddleware(logger, namespace)
-}
-
 func NewWithOptions(ws Workspace, version string, opts Options) *mcp.Server {
 	name, title, _, _, instructions := ResolveDefaults(opts)
 	// Identity resolution is owned by mayamcp; values are already defaulted
