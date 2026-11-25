@@ -12,6 +12,7 @@ ngodingmcp/
 ├── docs/                       # dokumentasi detail (dirujuk dari README)
 ├── internal/
 │   ├── app/                    # wiring server bersama (dipakai CLI & TUI), workspace manager
+│   │   └── core.go             #   NewCore: inti MCP (workspace + tools) tanpa HTTP/auth/UI/TUI
 │   ├── auth/                   # token auth (Bearer/X-API-Key) + session store UI (opaque)
 │   ├── oauth/                  # embedded OAuth 2.1 AS+RS untuk /mcp (MCP spec)
 │                               #   RFC 9728/8414 metadata, DCR (RFC 7591), PKCE,
@@ -25,11 +26,12 @@ ngodingmcp/
 │   ├── procman/                # background process manager (opt-in)
 │   ├── workspace/              # operasi file tersandbox + atomic write, pindah root saat jalan,
 │   │                           #   blokir file sensitif, edit_file + diff, cek delimiter
-│   ├── fetch/                  # download_file: https + guard IP saat dial
-│   ├── gitread/                # git status/diff/log read-only
-│   ├── gitwrite/               # git init/add/commit/branch + remote/fetch/pull/push/merge, gh repo & actions (tanpa force/hook)
+│   ├── fetch/                  # download_file: https + guard IP saat dial (interface Workspace sempit)
+│   ├── gitread/                # git status/diff/log read-only (interface Workspace sempit)
+│   ├── gitwrite/               # git init/add/commit/branch + remote/fetch/pull/push/merge, gh repo & actions (tanpa force/hook; interface Workspace sempit)
 │   ├── mcpserver/              # definisi MCP tools, satu file per domain:
-│   │   ├── server.go           #   Options, konstruktor, daftar tool aktif, middleware
+│   │   ├── server.go           #   Options (tool + identitas), konstruktor, daftar tool, middleware
+│   │   ├── workspace.go        #   interface Workspace: batas antara MCP dan implementasi workspace
 │   │   ├── helpers.go          #   textResult, preset anotasi, helper kecil
 │   │   ├── register.go         #   addTextTool / addUntypedTool: isi hasil dan outputSchema
 │   │   ├── modules.go          #   modul tool inti yang bisa dimatikan (--disable-tools)
@@ -55,6 +57,29 @@ ngodingmcp/
 ```
 
 Folder `TaskDev/` (catatan pengembangan) dan `dist/` di-gitignore.
+
+## Core vs appliance
+
+Konstruksi inti MCP sengaja dipisah dari lapisan *appliance* (HTTP, auth, Web
+UI, TUI, systemd) supaya bisa dipakai ulang:
+
+* `app.NewCore(Config)` menghasilkan `Core{Workspace, MCPServer, Runner,
+  Processes, Downloader, ToolCount, Logger, Disabled}` tanpa membuka listener
+  dan tanpa mengimpor auth/UI/service. `app.New` lalu menggabungkan `Core`
+  dengan token/OAuth, Web UI, mux HTTP, dan transport Streamable HTTP
+  `Stateless: true`.
+* `mcpserver.NewWithOptions(ws Workspace, version, Options)` menerima
+  **interface**, bukan `*workspace.Workspace` konkret. `fetch`, `gitread`, dan
+  `gitwrite` juga punya interface sempit masing-masing; tipe konkret
+  `workspace.Workspace` memenuhinya.
+* `mcpserver.Options` berisi opsi tool (`Runner`, `Processes`, `Downloader`,
+  `Disabled`, `Logger`) dan opsi identitas (`Name`, `Title`, `Instructions`,
+  `AgentsURI`). Semua opsi identitas punya default yang sama seperti sebelumnya
+  (`ngodingmcp`, `NgodingMCP`, teks editor, `ngodingmcp://agents`), jadi perilaku
+  server tidak berubah.
+* `*mcp.Server` yang dikembalikan bersifat transport-agnostic: bisa dijalankan
+  lewat HTTP maupun `mcp.StdioTransport`. `ngodingmcp` sendiri tetap memakai
+  HTTP stateless.
 
 ## Test
 

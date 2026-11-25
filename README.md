@@ -158,7 +158,7 @@ Detail lengkap: [docs/security.md](docs/security.md).
 - [docs/oauth.md](docs/oauth.md): OAuth untuk `/mcp` (MCP spec), discovery, DCR, consent, `public-url`, `trusted-proxy`
 - [docs/security.md](docs/security.md): sandbox, file sensitif, batasan git
 - [docs/versioning.md](docs/versioning.md): format versi build dan cara build
-- [docs/development.md](docs/development.md): struktur folder, test, `TestToolContract`
+- [docs/development.md](docs/development.md): struktur folder, batas core/appliance (`NewCore`), test, `TestToolContract`
 
 ## Credits
 
