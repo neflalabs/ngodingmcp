@@ -16,7 +16,6 @@ package oauth
 
 import (
 	"crypto/ecdsa"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -28,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	applianceoauth "github.com/neflalabs/mayamcp/appliance/oauth"
 
 	"ngodingmcp/internal/auth"
 )
@@ -240,13 +241,8 @@ func (s *Server) peerTrusted(r *http.Request) bool {
 // safely in URLs, headers or JSON. Wrap a mux with it so every handler in
 // the process rejects such requests uniformly.
 func GuardHost(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !validRequestHost(r.Host) {
-			http.Error(w, "invalid Host header", http.StatusBadRequest)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+	// Portable host validation lives in the mayamcp appliance module.
+	return applianceoauth.GuardHost(next)
 }
 
 // validRequestHost reports whether host (with optional port) is a syntactically
@@ -254,53 +250,7 @@ func GuardHost(next http.Handler) http.Handler {
 // digits-only port, containing no characters that could break out of a URL,
 // header value or JSON string.
 func validRequestHost(host string) bool {
-	if host == "" || len(host) > 253 {
-		return false
-	}
-	if strings.HasPrefix(host, "[") {
-		end := strings.Index(host, "]")
-		if end < 0 {
-			return false
-		}
-		if ip := net.ParseIP(host[1:end]); ip == nil {
-			return false
-		}
-		rest := host[end+1:]
-		if rest == "" {
-			return true
-		}
-		if !strings.HasPrefix(rest, ":") {
-			return false
-		}
-		return isPort(rest[1:])
-	}
-	if strings.Contains(host, ":") {
-		h, port, err := net.SplitHostPort(host)
-		if err != nil || !isPort(port) {
-			return false
-		}
-		host = h
-	}
-	for _, c := range host {
-		ok := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
-			c == '-' || c == '.' || c == '_'
-		if !ok {
-			return false
-		}
-	}
-	return host != ""
-}
-
-func isPort(s string) bool {
-	if len(s) == 0 || len(s) > 5 {
-		return false
-	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return true
+	return applianceoauth.ValidRequestHost(host)
 }
 
 // resourceMetadataURL is the absolute URL clients use to find this server's
@@ -330,11 +280,7 @@ func (s *Server) ClientCount() int {
 
 // randomID returns a base64url-encoded random identifier of nbytes.
 func randomID(nbytes int) (string, error) {
-	buf := make([]byte, nbytes)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	return applianceoauth.RandomID(nbytes)
 }
 
 // randomSecret returns the same, but encoded for opaque-token usage.

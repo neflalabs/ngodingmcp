@@ -30,6 +30,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/neflalabs/mayamcp v0.0.0
+	github.com/neflalabs/mayamcp/appliance v0.0.0
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
@@ -42,3 +43,5 @@ require (
 )
 
 replace github.com/neflalabs/mayamcp => ../mayamcp
+
+replace github.com/neflalabs/mayamcp/appliance => ../mayamcp/appliance
